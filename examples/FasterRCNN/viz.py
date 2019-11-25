@@ -96,13 +96,16 @@ def draw_final_outputs(img, results):
     return ret
 
 
-def draw_final_outputs_blackwhite(img, results):
+def draw_final_outputs_blackwhite(img, results, bwmode=True):
     """
     Args:
         results: [DetectionResult]
     """
-    img_bw = img.mean(axis=2)
-    img_bw = np.stack([img_bw] * 3, axis=2)
+    if bwmode:
+        img_bw = img.mean(axis=2)
+        img_bw = np.stack([img_bw] * 3, axis=2)
+    else:
+        img_bw = img
 
     if len(results) == 0:
         return img_bw
