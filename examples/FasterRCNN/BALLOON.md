@@ -30,12 +30,24 @@ wget http://models.tensorpack.com/FasterRCNN/COCO-MaskRCNN-R50FPN2x.npz
 	--load COCO-MaskRCNN-R50FPN2x.npz --logdir train_log/balloon
 ```
 
+```
+cd pretrained-models
+
+
+python3 train.py --config DATA.BASEDIR=~/dentalpoc/data/balloon MODE_FPN=True \
+	"DATA.VAL=('balloon_val',)"  "DATA.TRAIN=('balloon_train',)" \
+	TRAIN.BASE_LR=1e-3 TRAIN.EVAL_PERIOD=0 "TRAIN.LR_SCHEDULE=[1000]" \
+	"PREPROC.TRAIN_SHORT_EDGE_SIZE=[600,1200]" TRAIN.CHECKPOINT_PERIOD=1 DATA.NUM_WORKERS=1 \
+	--load ../../../pretrained-models/COCO-MaskRCNN-R50FPN2x.npz --logdir ~/logs/balloon-test
+
+```
+
 6. You can train as long as you want, but it only takes __a few minutes__ to produce nice results.
   You can visualize the results of the latest model by:
 ```
 ./predict.py --config DATA.BASEDIR=~/data/balloon MODE_FPN=True \
 	"DATA.VAL=('balloon_val',)"  "DATA.TRAIN=('balloon_train',)" \
-	--load train_log/balloon/checkpoint --predict ~/data/balloon/val/*.jpg
+	--load train_log/balloon-test/checkpoint --predict ~/data/balloon/val/*.jpg
 ```
 
 This command will produce images like this in your window:
