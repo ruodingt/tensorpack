@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 import argparse
 import itertools
+import re
+
 import numpy as np
 import os
 import shutil
@@ -19,7 +21,7 @@ from dataset import DatasetRegistry, register_coco, register_balloon
 from config import config as cfg
 from config import finalize_configs
 from data import get_eval_dataflow, get_train_dataflow
-from eval import DetectionResult, multithread_predict_dataflow, predict_image
+from eval import DetectionResult, multithread_predict_dataflow, predict_image, run_resize_image, predict_resized_image
 from modeling.generalized_rcnn import ResNetC4Model, ResNetFPNModel
 from viz import (
     draw_annotation, draw_final_outputs, draw_predictions,
@@ -97,6 +99,10 @@ def do_evaluate(pred_config, output_file):
 
 
 # from pycocotools.coco import annToMask
+def convert_box_mode_xywh_2_xyxy(box):
+    return box[0], box[1], box[0] + box[2], box[1] + box[3]
+
+
 def do_sanity_check(pred_func, output_dir='/root/dentalpoc/logs/xxxxx'):
     # num_tower = max(cfg.TRAIN.NUM_GPUS, 1)
     # graph_funcs = MultiTowerOfflinePredictor(
@@ -111,21 +117,20 @@ def do_sanity_check(pred_func, output_dir='/root/dentalpoc/logs/xxxxx'):
         # all_results = multithread_predict_dataflow(dataflows, graph_funcs)
         coco_format_detetcion = DatasetRegistry.get(dataset)
         coco_object = coco_format_detetcion.coco
-        for _im_id, _img_dic in coco_object.imgs.items():
+        for _im_id, _img_dic in list(coco_object.imgs.items())[1:]:
             _img_path = _img_dic['path']
             _img_seg_polygons = coco_object.imgToAnns[_im_id]
-            detection_ground_truths = list(map(lambda x: DetectionResult(box=x['bbox'],
-                                                                        score=1.0,
-                                                                        class_id=x['category_id'],
-                                                                        mask=coco_object.annToMask(x)),
-                                              _img_seg_polygons))
+            detection_ground_truths = list(
+                map(lambda x: DetectionResult(box=convert_box_mode_xywh_2_xyxy(x['bbox']),
+                                              score=1.0,
+                                              class_id=x['category_id'],
+                                              mask=coco_object.annToMask(x)),
+                    _img_seg_polygons))
 
             print("S======check")
-            # FIXME: ground truth need to be sclaed as well:
-            raise Exception('CNT here tmr')
             _predict_with_gt(pred_func=pred_func,
                              input_file=_img_path,
-                             ground_truth=detection_ground_truths,
+                             ground_truths=detection_ground_truths,
                              output_dir=output_dir)
 
         xxx = 0
@@ -133,17 +138,19 @@ def do_sanity_check(pred_func, output_dir='/root/dentalpoc/logs/xxxxx'):
         # DatasetRegistry.get(dataset).eval_inference_results(all_results, output)
 
 
-def _predict_with_gt(pred_func, input_file, ground_truth, output_dir=None):
+def _predict_with_gt(pred_func, input_file, ground_truths, output_dir=None):
     img = cv2.imread(input_file, cv2.IMREAD_COLOR)
+
+    resized_img, orig_shape, scale = run_resize_image(img)
     results = predict_image(img, pred_func)
     if cfg.MODE_MASK:
         final = draw_final_outputs_blackwhite(img, results)
     else:
         final = draw_final_outputs(img, results)
 
-    image_with_gt = draw_final_outputs_blackwhite(img, ground_truth, bwmode=False)
+    image_with_gt = draw_final_outputs(img, ground_truths)
     viz = np.concatenate((image_with_gt, final), axis=1)
-    out_path = os.path.join(output_dir, os.path.basename(input_file) + '.out.png')
+    out_path = os.path.join(output_dir, re.sub('/', '-', input_file) + '.out.png')
     cv2.imwrite(out_path, viz)
     logger.info("Inference output for {} written to\n {}".format(input_file, out_path))
     # tpviz.interactive_imshow(viz)

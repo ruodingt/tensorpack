@@ -141,6 +141,46 @@ def predict_image(img, model_func):
     return results
 
 
+def run_resize_image(img):
+    orig_shape = img.shape[:2]
+    resizer = CustomResize(cfg.PREPROC.TEST_SHORT_EDGE_SIZE, cfg.PREPROC.MAX_SIZE)
+    resized_img = resizer.augment(img)
+    scale = np.sqrt(resized_img.shape[0] * 1.0 / img.shape[0] * resized_img.shape[1] / img.shape[1])
+    return resized_img, orig_shape, scale
+
+
+def predict_resized_image(resized_img, orig_shape, scale, model_func):
+    """
+    Run detection on one image, using the TF callable.
+    This function should handle the preprocessing internally.
+
+    Args:
+        img: an image
+        model_func: a callable from the TF model.
+            It takes image and returns (boxes, probs, labels, [masks])
+
+    Returns:
+        [DetectionResult]
+    """
+
+    boxes, probs, labels, *masks = model_func(resized_img)
+
+    # Some slow numpy postprocessing:
+    boxes = boxes / scale
+    # boxes are already clipped inside the graph, but after the floating point scaling, this may not be true any more.
+    boxes = clip_boxes(boxes, orig_shape)
+    if masks:
+        full_masks = [_paste_mask(box, mask, orig_shape)
+                      for box, mask in zip(boxes, masks[0])]
+        masks = full_masks
+    else:
+        # fill with none
+        masks = [None] * len(boxes)
+
+    results = [DetectionResult(*args) for args in zip(boxes, probs, labels.tolist(), masks)]
+    return results
+
+
 def predict_dataflow(df, model_func, tqdm_bar=None):
     """
     Args:
