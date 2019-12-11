@@ -7,7 +7,9 @@ import argparse
 from data_prepare.coco_format import COCOFormatDataLoader
 from tensorpack import *
 from tensorpack.tfutils import collect_env_info
+from tensorpack.utils import logger
 from tensorpack.tfutils.common import get_tf_version_tuple
+import os
 
 from dataset import register_coco, register_balloon, register_coco_format
 from config import config as cfg
@@ -16,13 +18,12 @@ from data import get_train_dataflow
 from eval import EvalCallback
 from modeling.generalized_rcnn import ResNetC4Model, ResNetFPNModel
 
+import multiprocessing as mp
 
 try:
     import horovod.tensorflow as hvd
 except ImportError:
     pass
-
-
 
 """
 python3 train.py --config DATA.BASEDIR=~/dentalpoc/data/balloon MODE_FPN=True \
@@ -32,27 +33,25 @@ python3 train.py --config DATA.BASEDIR=~/dentalpoc/data/balloon MODE_FPN=True \
 	--load ../../../pretrained-models/COCO-MaskRCNN-R50FPN2x.npz --logdir ~/logs/balloon-test
 """
 
-import os
-def set_config_A():
-    cfg.DATA.BASEDIR = os.path.abspath('../../../data/toooth')
+
+def set_config_a():
+    cfg.freeze(False)
+    a = cfg.MODE_FPN
     cfg.MODE_FPN = True
+    cfg.DATA.BASEDIR = os.path.abspath('../../../data/toooth')
     cfg.DATA.VAL = ('coco_formated_eval',)
     cfg.DATA.TRAIN = ('coco_formated_train',)
     cfg.TRAIN.BASE_LR = 1e-3
     cfg.TRAIN.EVAL_PERIOD = 1
     cfg.TRAIN.LR_SCHEDULE = [1000]
-    cfg.PREPROC.TRAIN_SHORT_EDGE_SIZE = [600,1200]
+    cfg.PREPROC.TRAIN_SHORT_EDGE_SIZE = [600, 1200]
     cfg.TRAIN.CHECKPOINT_PERIOD = 1
     cfg.DATA.NUM_WORKERS = 1
     cfg.TRAIN.CHECKPOINT_PERIOD = 1
+    cfg.freeze(True)
 
-if __name__ == '__main__':
-    set_config_A()
-    # "spawn/forkserver" is safer than the default "fork" method and
-    # produce more deterministic behavior & memory saving
-    # However its limitation is you cannot pass a lambda function to subprocesses.
-    import multiprocessing as mp
-    mp.set_start_method('spawn')
+
+def add_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--load', help='Load a model to start training from. It overwrites BACKBONE.WEIGHTS')
     parser.add_argument('--logdir', help='Log directory. Will remove the old one if already exists.',
@@ -60,31 +59,75 @@ if __name__ == '__main__':
     parser.add_argument('--config', help="A list of KEY=VALUE to overwrite those defined in config.py", nargs='+')
 
     args = parser.parse_args()
+    return args
 
+
+def arrange_multiprocess():
+    # "spawn/forkserver" is safer than the default "fork" method and
+    # produce more deterministic behavior & memory saving
+    # However its limitation is you cannot pass a lambda function to subprocesses.
+    mp.set_start_method('spawn')
+
+
+def maybe_overwrite_config(train_args):
+    # TODO: add interactive sanity check:
+    #   - logdir is not empty yet still load from COCO pretrained
+    #   - logdir is not empty should automatically pickup the training
+    #   - Should automatically load category name
     # args.load = "~/logs/balloon-test/checkpoint"
-    args.logdir = "/root/dentalpoc/logs/tootth2"
+    train_args.logdir = "/root/dentalpoc/logs/tootth3"
+    config_yaml_path_copy_dump = os.path.join(train_args.logdir, 'train_config.yaml')
+    if train_args.config:
+        cfg.update_args(train_args.config)
+    return train_args
 
-    if args.config:
-        cfg.update_args(args.config)
 
+def register_data_pipeline():
     # register_coco(cfg.DATA.BASEDIR)  # add COCO datasets to the registry
     # register_balloon(cfg.DATA.BASEDIR)  # add the demo balloon datasets to the registry
-    import os
     annotations_dir = os.path.join(cfg.DATA.BASEDIR, 'annotations')
     data_load = COCOFormatDataLoader(project_root_dir='', coco_dir=annotations_dir)
     _latest = data_load.latest()
     latest_coco = next(_latest)
     register_coco_format(annotations_dir, splits_dic=latest_coco, class_names=['decay'])
 
+
+def setup_logging(logdir):
     # Setup logging ...
     is_horovod = cfg.TRAINER == 'horovod'
     if is_horovod:
         hvd.init()
     if not is_horovod or hvd.rank() == 0:
-        logger.set_logger_dir(args.logdir, 'd')
+        logger.set_logger_dir(logdir, 'd')
+
     logger.info("Environment Information:\n" + collect_env_info())
 
+
+def config_setup():
+    # config_yaml_path = os.path.join(os.path.abspath(cfg.PROJECT_ROOT), 'train_config/default.yaml')
+    # cfg.to_yaml(output_path=config_yaml_path)
+
+    set_config_a()
+
+    arrange_multiprocess()
+
+    train_args = add_args()
+    train_args = maybe_overwrite_config(train_args)
+
+    register_data_pipeline()
+
+    setup_logging(train_args.logdir)
+
+    # TODO: what does freeze do?
     finalize_configs(is_training=True)
+
+    return train_args
+
+
+if __name__ == '__main__':
+
+    args = config_setup()
+    is_horovod = cfg.TRAINER == 'horovod'
 
     # Create model
     MODEL = ResNetFPNModel() if cfg.MODE_FPN else ResNetC4Model()
@@ -122,7 +165,7 @@ if __name__ == '__main__':
         HostMemoryTracker(),
         ThroughputTracker(samples_per_step=cfg.TRAIN.NUM_GPUS),
         EstimatedTimeLeft(median=True),
-        SessionRunTimeout(60000),   # 1 minute timeout
+        SessionRunTimeout(60000),  # 1 minute timeout
         GPUUtilizationTracker()
     ]
     if cfg.TRAIN.EVAL_PERIOD > 0:
@@ -135,6 +178,7 @@ if __name__ == '__main__':
         session_init = None
     else:
         if args.load:
+            print('load {}'.format(args.load))
             # ignore mismatched values, so you can `--load` a model for fine-tuning
             session_init = SmartInit(args.load, ignore_mismatch=True)
         else:
@@ -155,4 +199,6 @@ if __name__ == '__main__':
     else:
         # nccl mode appears faster than cpu mode
         trainer = SyncMultiGPUTrainerReplicated(cfg.TRAIN.NUM_GPUS, average=False, mode='nccl')
+
+    # exit()
     launch_train_with_config(traincfg, trainer)
