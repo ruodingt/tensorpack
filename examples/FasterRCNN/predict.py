@@ -209,7 +209,7 @@ if __name__ == '__main__':
     args.load = "/root/dentalpoc/logs/tootth2/checkpoint"
 
     if args.config:
-        cfg.update_args(args.config)
+        cfg.update_config_from_args(args.config)
     # register_coco(cfg.DATA.BASEDIR)  # add COCO datasets to the registry
     # register_balloon(cfg.DATA.BASEDIR)
 

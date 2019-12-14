@@ -44,7 +44,7 @@ class AttrDict(object):
             else:
                 setattr(self, k, v)
 
-    def update_args(self, args):
+    def update_config_from_args(self, args):
         """Update from command line args. """
         for cfg in args:
             keys, v = cfg.split('=', maxsplit=1)

@@ -78,7 +78,7 @@ def maybe_overwrite_config(train_args):
     train_args.logdir = "/root/dentalpoc/logs/tootth3"
     config_yaml_path_copy_dump = os.path.join(train_args.logdir, 'train_config.yaml')
     if train_args.config:
-        cfg.update_args(train_args.config)
+        cfg.update_config_from_args(train_args.config)
     return train_args
 
 
@@ -134,7 +134,7 @@ if __name__ == '__main__':
 
     # Compute the training schedule from the number of GPUs ...
     stepnum = cfg.TRAIN.STEPS_PER_EPOCH
-    # warmup is step based, lr is epoch based
+    # warmup is step based, lr is epoch based (huh...?)
     init_lr = cfg.TRAIN.WARMUP_INIT_LR * min(8. / cfg.TRAIN.NUM_GPUS, 1.)
     warmup_schedule = [(0, init_lr), (cfg.TRAIN.WARMUP, cfg.TRAIN.BASE_LR)]
     warmup_end_epoch = cfg.TRAIN.WARMUP * 1. / stepnum

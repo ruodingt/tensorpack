@@ -47,7 +47,7 @@ def evaluate_rcnn(model_name, paper_arxiv_id, cfg_list, model_file):
         v: k for k, v in COCODetection.COCO_id_to_category_id.items()
     }
 
-    cfg.update_args(cfg_list)  # TODO backup/restore config
+    cfg.update_config_from_args(cfg_list)  # TODO backup/restore config
     finalize_configs(False)
     MODEL = ResNetFPNModel() if cfg.MODE_FPN else ResNetC4Model()
     predcfg = PredictConfig(
