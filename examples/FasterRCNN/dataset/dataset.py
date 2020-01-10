@@ -2,6 +2,8 @@
 
 from collections import defaultdict
 
+# from dataset.coco_format_dc import COCOFormatDetectionSubset
+
 __all__ = ['DatasetRegistry', 'DatasetSplit']
 
 
@@ -74,16 +76,22 @@ class DatasetRegistry():
     _metadata_registry = defaultdict(dict)
 
     @staticmethod
-    def register(name, func):
+    def register(dataset_name, func, split_subset=None):
         """
-        Args:
-            name (str): the name of the dataset split, e.g. "coco_train2017"
-            func: a function which returns an instance of `DatasetSplit`
-        """
-        assert name not in DatasetRegistry._registry, "Dataset {} was registered already!".format(name)
-        DatasetRegistry._registry[name] = func
 
-    @staticmethod
+        :param dataset_name: the name of the dataset split, e.g. "coco_train2017"
+        :param func: a function which returns an instance of `DatasetSplit`
+        :param split_subset: split_subset
+        :return:
+        """
+        assert dataset_name not in DatasetRegistry._registry, "Dataset {} was registered already!".format(dataset_name)
+
+        # if func is not None:
+        DatasetRegistry._registry[dataset_name] = func
+        class_names = func().categories_name
+        return class_names
+
+
     def get(name):
         """
         Args:
@@ -93,7 +101,11 @@ class DatasetRegistry():
             DatasetSplit
         """
         assert name in DatasetRegistry._registry, "Dataset {} was not registered!".format(name)
-        return DatasetRegistry._registry[name]()
+        _registered_item = DatasetRegistry._registry[name]
+        if callable(_registered_item):
+            return _registered_item()
+        else:
+            return _registered_item
 
     @staticmethod
     def register_metadata(name, key, value):

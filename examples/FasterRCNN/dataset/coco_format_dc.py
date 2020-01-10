@@ -1,21 +1,21 @@
 # -*- coding: utf-8 -*-
 
 import json
-import numpy as np
 import os
-import tqdm
 
-from data_prepare.coco_format import COCOFormatDataLoader
-from tensorpack.utils import logger
-from tensorpack.utils.timer import timed_operation
+import numpy as np
+import tqdm
+from pycocotools.coco import COCO
 
 from config import config as cfg
 from dataset import DatasetRegistry, DatasetSplit
+from tensorpack.utils import logger
+from tensorpack.utils.timer import timed_operation
 
 __all__ = ['register_coco_format']
 
 
-class COCOFormatDetection(DatasetSplit):
+class COCOFormatDetectionSubset(DatasetSplit):
     # handle a few special splits whose names do not match the directory names
     # _INSTANCE_TO_BASEDIR = {
     #     'valminusminival2014': 'val2014',
@@ -27,13 +27,14 @@ class COCOFormatDetection(DatasetSplit):
     Mapping from the incontinuous COCO category id to an id in [1, #category]
     For your own coco-format, dataset, change this to an **empty dict**.
     """
+
     # COCO_id_to_category_id = {13: 12, 14: 13, 15: 14, 16: 15, 17: 16, 18: 17, 19: 18, 20: 19, 21: 20, 22: 21, 23: 22, 24: 23, 25: 24, 27: 25, 28: 26, 31: 27, 32: 28, 33: 29, 34: 30, 35: 31, 36: 32, 37: 33, 38: 34, 39: 35, 40: 36, 41: 37, 42: 38, 43: 39, 44: 40, 46: 41, 47: 42, 48: 43, 49: 44, 50: 45, 51: 46, 52: 47, 53: 48, 54: 49, 55: 50, 56: 51, 57: 52, 58: 53, 59: 54, 60: 55, 61: 56, 62: 57, 63: 58, 64: 59, 65: 60, 67: 61, 70: 62, 72: 63, 73: 64, 74: 65, 75: 66, 76: 67, 77: 68, 78: 69, 79: 70, 80: 71, 81: 72, 82: 73, 84: 74, 85: 75, 86: 76, 87: 77, 88: 78, 89: 79, 90: 80}  # noqa
 
-    def __init__(self, basedir, split):
+    def __init__(self, base_dir, annotation_fp):
         """
         Args:
-            basedir (str): root of the dataset which contains the subdirectories for each split and annotations
-            split (str): the name of the split, e.g. "train2017".
+            base_dir (str): root of the dataset which contains the subdirectories for each split and annotations
+            annotation_fp (str): the name of the split, e.g. "train2017".
                 The split has to match an annotation file in "annotations/" and a directory of images.
 
         Examples:
@@ -48,23 +49,29 @@ class COCOFormatDetection(DatasetSplit):
 
             use `COCODetection(DIR, 'XX')` and `COCODetection(DIR, 'YY')`
         """
-        basedir = os.path.expanduser(basedir)
 
-        # self._imgdir = os.path.realpath(os.path.join(basedir, split))
-        # assert os.path.isdir(self._imgdir), "{} is not a directory!".format(self._imgdir)
+        self.base_dir = base_dir
+        assert os.path.isfile(annotation_fp), annotation_fp
 
-        annotation_file = os.path.join(
-            basedir, split)
-        assert os.path.isfile(annotation_file), annotation_file
+        self.annotation_fp = annotation_fp
 
-        from pycocotools.coco import COCO
-        self.coco = COCO(annotation_file)
-        self.annotation_file = annotation_file
-        logger.info("Instances loaded from {}.".format(annotation_file))
+        self.coco = COCO(annotation_fp)
+        self.annotation_file_path = annotation_fp
 
-    # https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocoEvalDemo.ipynb
+        _categories = list(map(lambda x: (x['id'], x['name']), self.coco.cats.values()))
+        _categories_sorted = sorted(_categories, key=lambda k: k[0], reverse=False)
+        if len(_categories_sorted) > 1:
+            assert _categories_sorted[0][0] == 1
+        _, self.categories_name = list(zip(*_categories_sorted))
+        logger.info("Instances loaded from {}.".format(annotation_fp))
+
+    def reload_coco(self):
+        self.coco = COCO(self.annotation_fp)
+        self.annotation_file_path = self.annotation_fp
+
     def print_coco_metrics(self, results):
         """
+        # https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocoEvalDemo.ipynb
         Args:
             results(list[dict]): results in coco format
         Returns:
@@ -104,14 +111,18 @@ class COCOFormatDetection(DatasetSplit):
                 and (if add_gt is True) 'boxes', 'class', 'is_crowd', and optionally
                 'segmentation'.
         """
+        # self.reload_coco()
         with timed_operation('Load annotations for {}'.format(
-                os.path.basename(self.annotation_file))):
+                os.path.basename(self.annotation_file_path))):
             img_ids = self.coco.getImgIds()
             img_ids.sort()
             # list of dict, each has keys: height,width,id,file_name
             imgs = self.coco.loadImgs(img_ids)
 
             for idx, img in enumerate(tqdm.tqdm(imgs)):
+                # img['image_id'] = img.pop('id')
+                #  FIXME: why pop here, if use func to load COCOFormatDetectionSubset, then we can use pop
+                #       when use func, it can prevent data
                 img['image_id'] = img.pop('id')
                 img['file_name'] = img['path']
                 if idx == 0:
@@ -129,11 +140,11 @@ class COCOFormatDetection(DatasetSplit):
         # ann_ids = self.coco.getAnnIds(imgIds=img['image_id'])
         # objs = self.coco.loadAnns(ann_ids)
         objs = self.coco.imgToAnns[img['image_id']]  # equivalent but faster than the above two lines
-        if 'minival' not in self.annotation_file:
+        if 'minival' not in self.annotation_file_path:
             # TODO better to check across the entire json, rather than per-image
             ann_ids = [ann["id"] for ann in objs]
             assert len(set(ann_ids)) == len(ann_ids), \
-                "Annotation ids in '{}' are not unique!".format(self.annotation_file)
+                "Annotation ids in '{}' are not unique!".format(self.annotation_file_path)
 
         # clean-up boxes
         width = img.pop('width')
@@ -188,7 +199,7 @@ class COCOFormatDetection(DatasetSplit):
         cls = np.asarray(all_cls, dtype='int32')  # (n,)
         if len(cls):
             assert cls.min() > 0, "Category id in COCO format must > 0!"
-        img['class'] = cls          # n, always >0
+        img['class'] = cls  # n, always >0
         img['is_crowd'] = np.asarray(all_iscrowd, dtype='int8')  # n,
         if add_mask:
             # also required to be float32
@@ -222,7 +233,7 @@ class COCOFormatDetection(DatasetSplit):
             return {}
 
 
-def register_coco_format(basedir, splits_dic, class_names):
+def register_coco_format(basedir, data_meta_info):
     """
     Add COCO datasets like "coco_train201x" to the registry,
     so you can refer to them with names in `cfg.DATA.TRAIN/VAL`.
@@ -230,20 +241,25 @@ def register_coco_format(basedir, splits_dic, class_names):
     Note that train2017==trainval35k==train2014+val2014-minival2014, and val2017==minival2014.
     """
 
-    # 80 names for COCO
-    # For your own coco-format dataset, change this.
-    # class_names = [
-    #     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch", "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush"]  # noqa
-    class_names = ["BG"] + class_names
+    splits = ['train', 'eval']
+    class_names_ls = {}
+    class_names = []
 
-    for split in ['train', 'eval']:
-        name = "coco_formated_" + split
-        DatasetRegistry.register(name, lambda x=split: COCOFormatDetection(basedir, splits_dic[x]))
-        DatasetRegistry.register_metadata(name, 'class_names', class_names)
+    for _split in splits:
+        _name = "coco_formatted_" + _split
+        class_names = DatasetRegistry.register(dataset_name=_name,
+                                               func=lambda sp=_split: COCOFormatDetectionSubset(basedir,
+                                                                                                data_meta_info[sp]),
+                                               split_subset=COCOFormatDetectionSubset(basedir,
+                                                                                      data_meta_info[_split]))
+        class_names_ls[_name] = class_names
 
+    # consistency check
+    for nm, cls_n in class_names_ls.items():
+        assert class_names == cls_n, "Train and Val category sets are not consistent"
 
-if __name__ == '__main__':
-    basedir = '~/data/coco'
-    c = COCOFormatDetection(basedir, 'train2014')
-    roidb = c.load(add_gt=True, add_mask=True)
-    print("#Images:", len(roidb))
+    class_names = ["BG"] + list(class_names)
+    for subset_name, _ in class_names_ls.items():
+        DatasetRegistry.register_metadata(subset_name, 'class_names', class_names)
+
+    return

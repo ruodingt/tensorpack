@@ -2,160 +2,64 @@
 # -*- coding: utf-8 -*-
 # File: train.py
 
-import argparse
-
-from data_prepare.coco_format import COCOFormatDataLoader
-from tensorpack import *
-from tensorpack.tfutils import collect_env_info
-from tensorpack.utils import logger
-from tensorpack.tfutils.common import get_tf_version_tuple
-import os
-
-from dataset import register_coco, register_balloon, register_coco_format
 from config import config as cfg
-from config import finalize_configs
 from data import get_train_dataflow
 from eval import EvalCallback
 from modeling.generalized_rcnn import ResNetC4Model, ResNetFPNModel
-
-import multiprocessing as mp
+from tensorpack import *
+from tensorpack.utils import logger
+from train_job_setup import config_setup
 
 try:
     import horovod.tensorflow as hvd
 except ImportError:
     pass
 
-"""
-python3 train.py --config DATA.BASEDIR=~/dentalpoc/data/balloon MODE_FPN=True \
-	"DATA.VAL=('balloon_val',)"  "DATA.TRAIN=('balloon_train',)" \
-	TRAIN.BASE_LR=1e-3 TRAIN.EVAL_PERIOD=0 "TRAIN.LR_SCHEDULE=[1000]" \
-	"PREPROC.TRAIN_SHORT_EDGE_SIZE=[600,1200]" TRAIN.CHECKPOINT_PERIOD=1 DATA.NUM_WORKERS=1 \
-	--load ../../../pretrained-models/COCO-MaskRCNN-R50FPN2x.npz --logdir ~/logs/balloon-test
-"""
 
-
-def set_config_a():
-    cfg.freeze(False)
-    a = cfg.MODE_FPN
-    cfg.MODE_FPN = True
-    cfg.DATA.BASEDIR = os.path.abspath('../../../data/toooth')
-    cfg.DATA.VAL = ('coco_formated_eval',)
-    cfg.DATA.TRAIN = ('coco_formated_train',)
-    cfg.TRAIN.BASE_LR = 1e-3
-    cfg.TRAIN.EVAL_PERIOD = 1
-    cfg.TRAIN.LR_SCHEDULE = [1000]
-    cfg.PREPROC.TRAIN_SHORT_EDGE_SIZE = [600, 1200]
-    cfg.TRAIN.CHECKPOINT_PERIOD = 1
-    cfg.DATA.NUM_WORKERS = 1
-    cfg.TRAIN.CHECKPOINT_PERIOD = 1
-    cfg.freeze(True)
-
-
-def add_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--load', help='Load a model to start training from. It overwrites BACKBONE.WEIGHTS')
-    parser.add_argument('--logdir', help='Log directory. Will remove the old one if already exists.',
-                        default='train_log/maskrcnn')
-    parser.add_argument('--config', help="A list of KEY=VALUE to overwrite those defined in config.py", nargs='+')
-
-    args = parser.parse_args()
-    return args
-
-
-def arrange_multiprocess():
-    # "spawn/forkserver" is safer than the default "fork" method and
-    # produce more deterministic behavior & memory saving
-    # However its limitation is you cannot pass a lambda function to subprocesses.
-    mp.set_start_method('spawn')
-
-
-def maybe_overwrite_config(train_args):
-    # TODO: add interactive sanity check:
-    #   - logdir is not empty yet still load from COCO pretrained
-    #   - logdir is not empty should automatically pickup the training
-    #   - Should automatically load category name
-    # args.load = "~/logs/balloon-test/checkpoint"
-    train_args.logdir = "/root/dentalpoc/logs/tootth3"
-    config_yaml_path_copy_dump = os.path.join(train_args.logdir, 'train_config.yaml')
-    if train_args.config:
-        cfg.update_config_from_args(train_args.config)
-    return train_args
-
-
-def register_data_pipeline():
-    # register_coco(cfg.DATA.BASEDIR)  # add COCO datasets to the registry
-    # register_balloon(cfg.DATA.BASEDIR)  # add the demo balloon datasets to the registry
-    annotations_dir = os.path.join(cfg.DATA.BASEDIR, 'annotations')
-    data_load = COCOFormatDataLoader(project_root_dir='', coco_dir=annotations_dir)
-    _latest = data_load.latest()
-    latest_coco = next(_latest)
-    register_coco_format(annotations_dir, splits_dic=latest_coco, class_names=['decay'])
-
-
-def setup_logging(logdir):
-    # Setup logging ...
-    is_horovod = cfg.TRAINER == 'horovod'
-    if is_horovod:
-        hvd.init()
-    if not is_horovod or hvd.rank() == 0:
-        logger.set_logger_dir(logdir, 'd')
-
-    logger.info("Environment Information:\n" + collect_env_info())
-
-
-def config_setup():
-    # config_yaml_path = os.path.join(os.path.abspath(cfg.PROJECT_ROOT), 'train_config/default.yaml')
-    # cfg.to_yaml(output_path=config_yaml_path)
-
-    set_config_a()
-
-    arrange_multiprocess()
-
-    train_args = add_args()
-    train_args = maybe_overwrite_config(train_args)
-
-    register_data_pipeline()
-
-    setup_logging(train_args.logdir)
-
-    # TODO: what does freeze do?
-    finalize_configs(is_training=True)
-
-    return train_args
-
-
-if __name__ == '__main__':
-
-    args = config_setup()
-    is_horovod = cfg.TRAINER == 'horovod'
-
-    # Create model
-    MODEL = ResNetFPNModel() if cfg.MODE_FPN else ResNetC4Model()
-
+def setup_training_schedule(train_dataflow):
     # Compute the training schedule from the number of GPUs ...
-    stepnum = cfg.TRAIN.STEPS_PER_EPOCH
+    step_num_ = cfg.TRAIN.STEPS_PER_EPOCH
     # warmup is step based, lr is epoch based (huh...?)
     init_lr = cfg.TRAIN.WARMUP_INIT_LR * min(8. / cfg.TRAIN.NUM_GPUS, 1.)
-    warmup_schedule = [(0, init_lr), (cfg.TRAIN.WARMUP, cfg.TRAIN.BASE_LR)]
-    warmup_end_epoch = cfg.TRAIN.WARMUP * 1. / stepnum
-    lr_schedule = [(int(warmup_end_epoch + 0.5), cfg.TRAIN.BASE_LR)]
+    warmup_schedule_ = [(0, init_lr), (cfg.TRAIN.WARMUP, cfg.TRAIN.BASE_LR)]
+    warmup_end_epoch_ = cfg.TRAIN.WARMUP * 1. / step_num_
+    lr_schedule_ = [(int(warmup_end_epoch_ + 0.5), cfg.TRAIN.BASE_LR)]
 
     factor = 8. / cfg.TRAIN.NUM_GPUS
     for idx, steps in enumerate(cfg.TRAIN.LR_SCHEDULE[:-1]):
         mult = 0.1 ** (idx + 1)
-        lr_schedule.append(
-            (steps * factor // stepnum, cfg.TRAIN.BASE_LR * mult))
-    logger.info("Warm Up Schedule (steps, value): " + str(warmup_schedule))
-    logger.info("LR Schedule (epochs, value): " + str(lr_schedule))
-    train_dataflow = get_train_dataflow()
+        lr_schedule_.append(
+            (steps * factor // step_num_, cfg.TRAIN.BASE_LR * mult))
+    logger.info("Warm Up Schedule (steps, value): " + str(warmup_schedule_))
+    logger.info("LR Schedule (epochs, value): " + str(lr_schedule_))
+
     # This is what's commonly referred to as "epochs"
     total_passes = cfg.TRAIN.LR_SCHEDULE[-1] * 8 / train_dataflow.size()
     logger.info("Total passes of the training set is: {:.5g}".format(total_passes))
+    max_epoch_ = cfg.TRAIN.LR_SCHEDULE[-1] * factor // step_num_
+    return warmup_schedule_, lr_schedule_, step_num_, max_epoch_
 
+
+def session_initialization(is_horovod, load):
+    if is_horovod and hvd.rank() > 0:
+        session_init_ = None
+    else:
+        if load:
+            print('load {}'.format(load))
+            # ignore mismatched values, so you can `--load` a model for fine-tuning
+            session_init_ = SmartInit(load, ignore_mismatch=True)
+        else:
+            session_init_ = SmartInit(cfg.BACKBONE.WEIGHTS)
+
+    return session_init_
+
+
+def create_callbacks(warmup_schedule, lr_schedule, model, logdir):
     # Create callbacks ...
-    callbacks = [
+    callbacks_ = [
         PeriodicCallback(
-            ModelSaver(max_to_keep=10, keep_checkpoint_every_n_hours=1),
+            ModelSaver(max_to_keep=10,
+                       keep_checkpoint_every_n_hours=1),
             every_k_epochs=cfg.TRAIN.CHECKPOINT_PERIOD),
         # linear warmup
         ScheduledHyperParamSetter(
@@ -165,32 +69,40 @@ if __name__ == '__main__':
         HostMemoryTracker(),
         ThroughputTracker(samples_per_step=cfg.TRAIN.NUM_GPUS),
         EstimatedTimeLeft(median=True),
-        SessionRunTimeout(60000),  # 1 minute timeout
+        SessionRunTimeout(60000),  # 60000 = 1 minute timeout
         GPUUtilizationTracker()
     ]
+
     if cfg.TRAIN.EVAL_PERIOD > 0:
-        callbacks.extend([
-            EvalCallback(dataset, *MODEL.get_inference_tensor_names(), args.logdir)
+        callbacks_.extend([
+            EvalCallback(dataset, *model.get_inference_tensor_names(), logdir)
             for dataset in cfg.DATA.VAL
         ])
+    return callbacks_
 
-    if is_horovod and hvd.rank() > 0:
-        session_init = None
-    else:
-        if args.load:
-            print('load {}'.format(args.load))
-            # ignore mismatched values, so you can `--load` a model for fine-tuning
-            session_init = SmartInit(args.load, ignore_mismatch=True)
-        else:
-            session_init = SmartInit(cfg.BACKBONE.WEIGHTS)
 
-    traincfg = TrainConfig(
+if __name__ == '__main__':
+
+    args, is_horovod = config_setup()
+
+    # Create model
+    MODEL = ResNetFPNModel() if cfg.MODE_FPN else ResNetC4Model()
+
+    # get dataflow
+    train_dataflow = get_train_dataflow()
+
+    # setup training schedule
+    warmup_schedule, lr_schedule, step_num, max_epoch = setup_training_schedule(train_dataflow)
+
+    callbacks = create_callbacks(warmup_schedule, lr_schedule, model=MODEL, logdir=args.logdir)
+
+    train_config = TrainConfig(
         model=MODEL,
         data=QueueInput(train_dataflow),
         callbacks=callbacks,
-        steps_per_epoch=stepnum,
-        max_epoch=cfg.TRAIN.LR_SCHEDULE[-1] * factor // stepnum,
-        session_init=session_init,
+        steps_per_epoch=step_num,
+        max_epoch=max_epoch,
+        session_init=session_initialization(is_horovod=is_horovod, load=args.load),
         starting_epoch=cfg.TRAIN.STARTING_EPOCH
     )
 
@@ -201,4 +113,4 @@ if __name__ == '__main__':
         trainer = SyncMultiGPUTrainerReplicated(cfg.TRAIN.NUM_GPUS, average=False, mode='nccl')
 
     # exit()
-    launch_train_with_config(traincfg, trainer)
+    launch_train_with_config(train_config, trainer)

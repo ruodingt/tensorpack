@@ -219,7 +219,7 @@ if __name__ == '__main__':
     data_load = COCOFormatDataLoader(project_root_dir='', coco_dir=annotations_dir)
     _latest = data_load.latest()
     latest_coco = next(_latest)
-    register_coco_format(annotations_dir, splits_dic=latest_coco, class_names=['decay'])
+    register_coco_format(annotations_dir, data_meta_info=latest_coco)
 
     MODEL = ResNetFPNModel() if cfg.MODE_FPN else ResNetC4Model()
 
