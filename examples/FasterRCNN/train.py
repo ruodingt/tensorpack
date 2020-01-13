@@ -9,6 +9,7 @@ from modeling.generalized_rcnn import ResNetC4Model, ResNetFPNModel
 from tensorpack import *
 from tensorpack.utils import logger
 from train_job_setup import config_setup
+import os
 
 try:
     import horovod.tensorflow as hvd
@@ -82,8 +83,9 @@ def create_callbacks(warmup_schedule, lr_schedule, model, logdir):
 
 
 if __name__ == '__main__':
+    images_data_base_dir = os.path.abspath('../../../data/datasets_coco/')
 
-    args, is_horovod = config_setup()
+    args, is_horovod = config_setup(image_data_basedir=images_data_base_dir)
 
     # Create model
     MODEL = ResNetFPNModel() if cfg.MODE_FPN else ResNetC4Model()

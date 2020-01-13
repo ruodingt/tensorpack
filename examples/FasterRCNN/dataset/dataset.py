@@ -86,8 +86,9 @@ class DatasetRegistry():
         """
         assert dataset_name not in DatasetRegistry._registry, "Dataset {} was registered already!".format(dataset_name)
 
-        # if func is not None:
         DatasetRegistry._registry[dataset_name] = func
+
+        # read class names from annotation
         class_names = func().categories_name
         return class_names
 

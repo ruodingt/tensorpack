@@ -37,7 +37,9 @@ python3 train.py --config DATA.BASEDIR=~/dentalpoc/data/balloon MODE_FPN=True \
 def set_config_v1():
     cfg.freeze(False)
     cfg.MODE_FPN = True
-    cfg.DATA.BASEDIR = os.path.abspath('../../../data/toooth')
+    cfg.DATA.BASEDIR = None
+
+    # TODO: this one change to path later
     cfg.DATA.VAL = ('coco_formatted_eval',)
     cfg.DATA.TRAIN = ('coco_formatted_train',)
     cfg.TRAIN.BASE_LR = 1e-3
@@ -92,38 +94,45 @@ def _setup_logging(logdir, is_horovod):
     logger.info("Environment Information:\n" + collect_env_info())
 
 
-def register_data_pipeline():
+def register_data_pipeline_v1(image_data_basedir):
     # register_coco(cfg.DATA.BASEDIR)  # add COCO datasets to the registry
     # register_balloon(cfg.DATA.BASEDIR)  # add the demo balloon datasets to the registry
     annotations_dir = os.path.join(cfg.DATA.BASEDIR, 'annotations')
     data_load = COCOFormatDataLoader(project_root_dir='', coco_dir=annotations_dir)
     _latest = data_load.latest()
     latest_coco = next(_latest)
-    register_coco_format(annotations_dir, data_meta_info=latest_coco)
+    register_coco_format(image_data_basedir=image_data_basedir, data_meta_info=latest_coco)
 
 
-def register_data_pipeline_v2(class_names=['decay']):
+def register_data_pipeline_v2(image_data_basedir, data_split_meta_info: dict):
     # register_coco(cfg.DATA.BASEDIR)  # add COCO datasets to the registry
     # register_balloon(cfg.DATA.BASEDIR)  # add the demo balloon datasets to the registry
-    annotations_dir = os.path.join(cfg.DATA.BASEDIR, 'annotations')
-    data_load = COCOFormatDataLoader(project_root_dir='', coco_dir=annotations_dir)
-    _latest = data_load.latest()
-    latest_coco = next(_latest)
-    register_coco_format(annotations_dir, data_meta_info=latest_coco)
+    # annotations_dir = os.path.join(cfg.DATA.BASEDIR, 'annotations')
+    # data_load = COCOFormatDataLoader(project_root_dir='', coco_dir=annotations_dir)
+    # _latest = data_load.latest()
+    # latest_coco = next(_latest)
+    assert 'train' in data_split_meta_info
+    assert 'eval' in data_split_meta_info
+    register_coco_format(image_data_basedir=image_data_basedir, data_meta_info=data_split_meta_info)
 
 
-def config_setup():
+def config_setup(image_data_basedir=None):
     # config_yaml_path = os.path.join(os.path.abspath(cfg.PROJECT_ROOT), 'train_config/default.yaml')
     # cfg.to_yaml(output_path=config_yaml_path)
 
     set_config_v1()
+
+    train_ann_path = os.path.join(os.path.abspath('../../../data/'), 'coco_stack_out/web_decay_600.json')
+    eval_ann_path = os.path.join(os.path.abspath('../../../data/'), 'coco_stack_out/web_decay_600.json')
+
+    data_split_meta_info = {'train': train_ann_path, 'eval': eval_ann_path}
 
     arrange_multiprocess()
 
     train_args = add_args()
     train_args = maybe_overwrite_config(train_args)
 
-    register_data_pipeline_v2()
+    register_data_pipeline_v2(image_data_basedir, data_split_meta_info)
     is_horovod_ = cfg.TRAINER == 'horovod'
 
     _setup_logging(train_args.logdir, is_horovod_)

@@ -354,6 +354,7 @@ def get_train_dataflow():
 
     ds = DataFromList(roidbs, shuffle=True)
 
+    # TODO: enhance data augmentation here
     preprocess = TrainingDataPreprocessor(cfg)
 
     if cfg.DATA.NUM_WORKERS > 0:

@@ -30,10 +30,10 @@ class COCOFormatDetectionSubset(DatasetSplit):
 
     # COCO_id_to_category_id = {13: 12, 14: 13, 15: 14, 16: 15, 17: 16, 18: 17, 19: 18, 20: 19, 21: 20, 22: 21, 23: 22, 24: 23, 25: 24, 27: 25, 28: 26, 31: 27, 32: 28, 33: 29, 34: 30, 35: 31, 36: 32, 37: 33, 38: 34, 39: 35, 40: 36, 41: 37, 42: 38, 43: 39, 44: 40, 46: 41, 47: 42, 48: 43, 49: 44, 50: 45, 51: 46, 52: 47, 53: 48, 54: 49, 55: 50, 56: 51, 57: 52, 58: 53, 59: 54, 60: 55, 61: 56, 62: 57, 63: 58, 64: 59, 65: 60, 67: 61, 70: 62, 72: 63, 73: 64, 74: 65, 75: 66, 76: 67, 77: 68, 78: 69, 79: 70, 80: 71, 81: 72, 82: 73, 84: 74, 85: 75, 86: 76, 87: 77, 88: 78, 89: 79, 90: 80}  # noqa
 
-    def __init__(self, base_dir, annotation_fp):
+    def __init__(self, annotation_fp, image_data_basedir=None):
         """
         Args:
-            base_dir (str): root of the dataset which contains the subdirectories for each split and annotations
+            image_data_basedir (str): root of the dataset which contains the subdirectories for each split and annotations
             annotation_fp (str): the name of the split, e.g. "train2017".
                 The split has to match an annotation file in "annotations/" and a directory of images.
 
@@ -50,13 +50,18 @@ class COCOFormatDetectionSubset(DatasetSplit):
             use `COCODetection(DIR, 'XX')` and `COCODetection(DIR, 'YY')`
         """
 
-        self.base_dir = base_dir
+        self.base_dir = image_data_basedir
         assert os.path.isfile(annotation_fp), annotation_fp
 
         self.annotation_fp = annotation_fp
 
         self.coco = COCO(annotation_fp)
         self.annotation_file_path = annotation_fp
+
+        if self.base_dir is not None:
+            for _id in self.coco.imgs:
+                _p = os.path.join(self.base_dir, self.coco.imgs[_id]['path'][1:])
+                self.coco.imgs[_id]['path'] = _p
 
         _categories = list(map(lambda x: (x['id'], x['name']), self.coco.cats.values()))
         _categories_sorted = sorted(_categories, key=lambda k: k[0], reverse=False)
@@ -233,7 +238,7 @@ class COCOFormatDetectionSubset(DatasetSplit):
             return {}
 
 
-def register_coco_format(basedir, data_meta_info):
+def register_coco_format(image_data_basedir, data_meta_info):
     """
     Add COCO datasets like "coco_train201x" to the registry,
     so you can refer to them with names in `cfg.DATA.TRAIN/VAL`.
@@ -248,18 +253,17 @@ def register_coco_format(basedir, data_meta_info):
     for _split in splits:
         _name = "coco_formatted_" + _split
         class_names = DatasetRegistry.register(dataset_name=_name,
-                                               func=lambda sp=_split: COCOFormatDetectionSubset(basedir,
-                                                                                                data_meta_info[sp]),
-                                               split_subset=COCOFormatDetectionSubset(basedir,
-                                                                                      data_meta_info[_split]))
+                                               func=lambda sp=_split:
+                                               COCOFormatDetectionSubset(data_meta_info[sp],
+                                                                         image_data_basedir=image_data_basedir))
         class_names_ls[_name] = class_names
 
     # consistency check
     for nm, cls_n in class_names_ls.items():
         assert class_names == cls_n, "Train and Val category sets are not consistent"
 
-    class_names = ["BG"] + list(class_names)
+    class_names_include_bg = ["BG"] + list(class_names)
     for subset_name, _ in class_names_ls.items():
-        DatasetRegistry.register_metadata(subset_name, 'class_names', class_names)
+        DatasetRegistry.register_metadata(subset_name, 'class_names', class_names_include_bg)
 
     return
