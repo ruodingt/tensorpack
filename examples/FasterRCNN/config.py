@@ -25,7 +25,7 @@ _C.MODE_MASK = True        # Faster R-CNN or Mask R-CNN
 _C.MODE_FPN = True
 
 # CONF: dataset -----------------------
-_C.DATA.BASEDIR = '/path/to/your/DATA/DIR'
+_C.DATA.IMAGE_DATA_BASEDIR = '/path/to/your/DATA/DIR'
 # All available dataset names are defined in `dataset/coco.py:register_coco`.
 # All TRAIN dataset will be concatenated for training.
 _C.DATA.TRAIN = ['coco_train2017', ]   # i.e. trainval35k

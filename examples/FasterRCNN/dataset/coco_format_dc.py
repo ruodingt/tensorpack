@@ -2,6 +2,8 @@
 
 import json
 import os
+import time
+from collections import defaultdict, namedtuple
 
 import numpy as np
 import tqdm
@@ -9,10 +11,50 @@ from pycocotools.coco import COCO
 
 from config import config as cfg
 from dataset import DatasetRegistry, DatasetSplit
+from dataset.data_config import DataConfig, DataSubsetSplit
 from tensorpack.utils import logger
 from tensorpack.utils.timer import timed_operation
 
 __all__ = ['register_coco_format']
+
+
+ReplaceItem = namedtuple("ReplaceItem", 'new_id, item')
+
+class COCO2(COCO):
+    def __init__(self, annotation_file=None, use_ext=False):
+        """
+        Constructor of Microsoft COCO helper class for reading and visualizing annotations.
+        :param annotation_file (str): location of annotation file
+        :param image_folder (str): location to the folder that hosts images.
+        :return:
+        """
+        self.use_ext = use_ext
+        # load dataset
+        self.dataset,self.anns,self.cats,self.imgs = dict(),dict(),dict(),dict()
+        self.imgToAnns, self.catToImgs = defaultdict(list), defaultdict(list)
+        if not annotation_file == None:
+            print('loading annotations into memory...')
+            tic = time.time()
+            dataset = json.load(open(annotation_file, 'r'))
+            assert type(dataset) == dict, 'annotation file format {} not supported'.format(type(dataset))
+            print('Done (t={:0.2f}s)'.format(time.time() - tic))
+            self.dataset = self.replace_category_id(dataset)
+            self.createIndex(use_ext)
+
+    def replace_category_id(self, dataset):
+        _categories_sorted = sorted(dataset['categories'], key=lambda k: k['id'], reverse=False)
+        coco_new_id_2_original_id = dict(map(
+            lambda x: (x[1]['id'], ReplaceItem(new_id=x[0]+1, item=x[1])), enumerate(_categories_sorted)))
+
+        for c in dataset['categories']:
+            c['old_id'] = c['id']
+            c['id'] = coco_new_id_2_original_id[c['id']].new_id
+
+        for a in dataset['annotations']:
+            a['old_category_id'] = a['category_id']
+            a['category_id'] = coco_new_id_2_original_id[a['category_id']].new_id
+        return dataset
+
 
 
 class COCOFormatDetectionSubset(DatasetSplit):
@@ -31,6 +73,7 @@ class COCOFormatDetectionSubset(DatasetSplit):
     # COCO_id_to_category_id = {13: 12, 14: 13, 15: 14, 16: 15, 17: 16, 18: 17, 19: 18, 20: 19, 21: 20, 22: 21, 23: 22, 24: 23, 25: 24, 27: 25, 28: 26, 31: 27, 32: 28, 33: 29, 34: 30, 35: 31, 36: 32, 37: 33, 38: 34, 39: 35, 40: 36, 41: 37, 42: 38, 43: 39, 44: 40, 46: 41, 47: 42, 48: 43, 49: 44, 50: 45, 51: 46, 52: 47, 53: 48, 54: 49, 55: 50, 56: 51, 57: 52, 58: 53, 59: 54, 60: 55, 61: 56, 62: 57, 63: 58, 64: 59, 65: 60, 67: 61, 70: 62, 72: 63, 73: 64, 74: 65, 75: 66, 76: 67, 77: 68, 78: 69, 79: 70, 80: 71, 81: 72, 82: 73, 84: 74, 85: 75, 86: 76, 87: 77, 88: 78, 89: 79, 90: 80}  # noqa
 
     def __init__(self, annotation_fp, image_data_basedir=None):
+        print("load annotation file from: ", annotation_fp)
         """
         Args:
             image_data_basedir (str): root of the dataset which contains the subdirectories for each split and annotations
@@ -55,7 +98,7 @@ class COCOFormatDetectionSubset(DatasetSplit):
 
         self.annotation_fp = annotation_fp
 
-        self.coco = COCO(annotation_fp)
+        self.coco = COCO2(annotation_fp)
         self.annotation_file_path = annotation_fp
 
         if self.base_dir is not None:
@@ -69,10 +112,6 @@ class COCOFormatDetectionSubset(DatasetSplit):
             assert _categories_sorted[0][0] == 1
         _, self.categories_name = list(zip(*_categories_sorted))
         logger.info("Instances loaded from {}.".format(annotation_fp))
-
-    def reload_coco(self):
-        self.coco = COCO(self.annotation_fp)
-        self.annotation_file_path = self.annotation_fp
 
     def print_coco_metrics(self, results):
         """
@@ -238,7 +277,7 @@ class COCOFormatDetectionSubset(DatasetSplit):
             return {}
 
 
-def register_coco_format(image_data_basedir, data_meta_info):
+def register_coco_format(data_config: DataConfig):
     """
     Add COCO datasets like "coco_train201x" to the registry,
     so you can refer to them with names in `cfg.DATA.TRAIN/VAL`.
@@ -246,16 +285,18 @@ def register_coco_format(image_data_basedir, data_meta_info):
     Note that train2017==trainval35k==train2014+val2014-minival2014, and val2017==minival2014.
     """
 
-    splits = ['train', 'eval']
+    # split_names = ['train', 'eval']
+
     class_names_ls = {}
     class_names = []
 
-    for _split in splits:
-        _name = "coco_formatted_" + _split
-        class_names = DatasetRegistry.register(dataset_name=_name,
-                                               func=lambda sp=_split:
-                                               COCOFormatDetectionSubset(data_meta_info[sp],
-                                                                         image_data_basedir=image_data_basedir))
+    for _split in data_config.train_splits + data_config.eval_splits:  # type: DataSubsetSplit
+        _name = _split.nickname
+        class_names = DatasetRegistry.register(
+            dataset_name=_name,
+            func=lambda sp=_split:
+            COCOFormatDetectionSubset(_split.ann_path,
+                                      image_data_basedir=data_config.image_data_basedir))
         class_names_ls[_name] = class_names
 
     # consistency check
@@ -266,4 +307,7 @@ def register_coco_format(image_data_basedir, data_meta_info):
     for subset_name, _ in class_names_ls.items():
         DatasetRegistry.register_metadata(subset_name, 'class_names', class_names_include_bg)
 
+    # TODO: check dataset here
     return
+
+

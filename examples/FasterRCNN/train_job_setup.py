@@ -3,22 +3,16 @@
 # File: train.py
 
 import argparse
+import datetime
+import multiprocessing as mp
 
-from data_prepare.coco_format import COCOFormatDataLoader
-from tensorpack import *
-from tensorpack.tfutils import collect_env_info
-from tensorpack.utils import logger
-from tensorpack.tfutils.common import get_tf_version_tuple
-import os
-
-from dataset import register_coco, register_balloon, register_coco_format
 from config import config as cfg
 from config import finalize_configs
-from data import get_train_dataflow
-from eval import EvalCallback
-from modeling.generalized_rcnn import ResNetC4Model, ResNetFPNModel
-
-import multiprocessing as mp
+from dataset import register_coco_format
+from dataset.data_config import DataConfig
+from tensorpack.tfutils import collect_env_info
+from tensorpack.utils import logger
+from utils.logconfig_checker import LogConfigChecker
 
 try:
     import horovod.tensorflow as hvd
@@ -34,14 +28,14 @@ python3 train.py --config DATA.BASEDIR=~/dentalpoc/data/balloon MODE_FPN=True \
 """
 
 
-def set_config_v1():
+def set_config_v1(data_config: DataConfig):
     cfg.freeze(False)
     cfg.MODE_FPN = True
-    cfg.DATA.BASEDIR = None
+    cfg.DATA.IMAGE_DATA_BASEDIR = data_config.image_data_basedir
 
     # TODO: this one change to path later
-    cfg.DATA.VAL = ('coco_formatted_eval',)
-    cfg.DATA.TRAIN = ('coco_formatted_train',)
+    cfg.DATA.TRAIN = data_config.get_nickname_list(DataConfig.TRAIN)
+    cfg.DATA.VAL = data_config.get_nickname_list(DataConfig.EVAL)
     cfg.TRAIN.BASE_LR = 1e-3
     cfg.TRAIN.EVAL_PERIOD = 1
     cfg.TRAIN.LR_SCHEDULE = [1000]
@@ -50,6 +44,28 @@ def set_config_v1():
     cfg.DATA.NUM_WORKERS = 1
     cfg.TRAIN.CHECKPOINT_PERIOD = 1
     cfg.freeze(True)
+
+
+class TimeStamp:
+    PATTERN = "@ %Y-%m-%d %H.%M.%S UTC"
+
+    @classmethod
+    def stamp(cls):
+        x = datetime.datetime.now()
+        return x.strftime(cls.PATTERN)
+
+    @classmethod
+    def stamp_to_datetime(cls, stamp: str):
+        _dt = datetime.datetime.strptime(stamp, cls.PATTERN)
+        return _dt
+
+    def latest_item(self, ls: [str]):
+        """
+        TODO: given a list of items with time stamps, identify the latest item
+        :param ls:
+        :return:
+        """
+        raise NotImplementedError("Fill me in!")
 
 
 def add_args():
@@ -70,14 +86,24 @@ def arrange_multiprocess():
     mp.set_start_method('spawn')
 
 
-def maybe_overwrite_config(train_args):
-    # TODO: add interactive sanity check:
-    #   - logdir is not empty yet still load from COCO pretrained
-    #   - logdir is not empty should automatically pickup the training
-    #   - Should automatically load category name
-    # args.load = "~/logs/balloon-test/checkpoint"
-    train_args.logdir = "/root/dentalpoc/logs/tootth3"
-    config_yaml_path_copy_dump = os.path.join(train_args.logdir, 'train_config.yaml')
+def maybe_overwrite_config(train_args, log_subdir=None, log_root="/root/dentalpoc/logs"):
+    """
+    Handle following scenarios interactively:
+       - logdir is not empty yet still want load from COCO pre-trained: create new dir
+       - logdir is not empty: pickup the training
+       - logdir is not exist yet: create new one and train from args.load
+    :param train_args:
+    :param log_subdir:
+    :param log_root:
+    :return:
+    """
+
+    lcc = LogConfigChecker(load_weight=train_args.load, default_log_subdir=log_subdir, log_root=log_root)
+    logdir, load_weight = lcc.execute()
+
+    train_args.logdir = logdir
+    train_args.load = load_weight
+
     if train_args.config:
         cfg.update_config_from_args(train_args.config)
     return train_args
@@ -94,45 +120,28 @@ def _setup_logging(logdir, is_horovod):
     logger.info("Environment Information:\n" + collect_env_info())
 
 
-def register_data_pipeline_v1(image_data_basedir):
-    # register_coco(cfg.DATA.BASEDIR)  # add COCO datasets to the registry
-    # register_balloon(cfg.DATA.BASEDIR)  # add the demo balloon datasets to the registry
-    annotations_dir = os.path.join(cfg.DATA.BASEDIR, 'annotations')
-    data_load = COCOFormatDataLoader(project_root_dir='', coco_dir=annotations_dir)
-    _latest = data_load.latest()
-    latest_coco = next(_latest)
-    register_coco_format(image_data_basedir=image_data_basedir, data_meta_info=latest_coco)
+def register_data_pipeline_v2(data_config: DataConfig):
+    # assert 'train' in data_split_meta_info
+    # assert 'eval' in data_split_meta_info
+    register_coco_format(data_config=data_config)
 
 
-def register_data_pipeline_v2(image_data_basedir, data_split_meta_info: dict):
-    # register_coco(cfg.DATA.BASEDIR)  # add COCO datasets to the registry
-    # register_balloon(cfg.DATA.BASEDIR)  # add the demo balloon datasets to the registry
-    # annotations_dir = os.path.join(cfg.DATA.BASEDIR, 'annotations')
-    # data_load = COCOFormatDataLoader(project_root_dir='', coco_dir=annotations_dir)
-    # _latest = data_load.latest()
-    # latest_coco = next(_latest)
-    assert 'train' in data_split_meta_info
-    assert 'eval' in data_split_meta_info
-    register_coco_format(image_data_basedir=image_data_basedir, data_meta_info=data_split_meta_info)
-
-
-def config_setup(image_data_basedir=None):
+def config_setup(data_config: DataConfig):
     # config_yaml_path = os.path.join(os.path.abspath(cfg.PROJECT_ROOT), 'train_config/default.yaml')
     # cfg.to_yaml(output_path=config_yaml_path)
 
-    set_config_v1()
+    if data_config is None:
+        data_config = DataConfig(image_data_basedir=None)
+        data_config.pop_with_default()
 
-    train_ann_path = os.path.join(os.path.abspath('../../../data/'), 'coco_stack_out/web_decay_600.json')
-    eval_ann_path = os.path.join(os.path.abspath('../../../data/'), 'coco_stack_out/web_decay_600.json')
-
-    data_split_meta_info = {'train': train_ann_path, 'eval': eval_ann_path}
+    set_config_v1(data_config=data_config)
 
     arrange_multiprocess()
 
     train_args = add_args()
     train_args = maybe_overwrite_config(train_args)
 
-    register_data_pipeline_v2(image_data_basedir, data_split_meta_info)
+    register_data_pipeline_v2(data_config=data_config)
     is_horovod_ = cfg.TRAINER == 'horovod'
 
     _setup_logging(train_args.logdir, is_horovod_)
@@ -141,4 +150,3 @@ def config_setup(image_data_basedir=None):
     finalize_configs(is_training=True)
 
     return train_args, is_horovod_
-

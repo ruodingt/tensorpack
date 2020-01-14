@@ -339,6 +339,7 @@ def get_train_dataflow():
 
     If MODE_MASK, gt_masks: (N, h, w)
     """
+    print(">>>>>>>>>>>>>>>>>>>>>>running dataflow: train", cfg.DATA.TRAIN)
     roidbs = list(itertools.chain.from_iterable(DatasetRegistry.get(x).training_roidbs() for x in cfg.DATA.TRAIN))
     print_class_histogram(roidbs)
 
@@ -376,6 +377,7 @@ def get_eval_dataflow(name, shard=0, num_shards=1):
         name (str): name of the dataset to evaluate
         shard, num_shards: to get subset of evaluation data
     """
+    print(">>>>>>>>>>>>>>>>>>>>>>running dataflow: eval")
     roidbs = DatasetRegistry.get(name).inference_roidbs()
     logger.info("Found {} images for inference.".format(len(roidbs)))
 

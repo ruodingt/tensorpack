@@ -4,6 +4,7 @@
 
 from config import config as cfg
 from data import get_train_dataflow
+from dataset.data_config import DataConfig
 from eval import EvalCallback
 from modeling.generalized_rcnn import ResNetC4Model, ResNetFPNModel
 from tensorpack import *
@@ -77,7 +78,7 @@ def create_callbacks(warmup_schedule, lr_schedule, model, logdir):
     if cfg.TRAIN.EVAL_PERIOD > 0:
         callbacks_.extend([
             EvalCallback(dataset, *model.get_inference_tensor_names(), logdir)
-            for dataset in cfg.DATA.VAL
+            for dataset in cfg.DATA.VAL + cfg.DATA.TRAIN
         ])
     return callbacks_
 
@@ -85,7 +86,48 @@ def create_callbacks(warmup_schedule, lr_schedule, model, logdir):
 if __name__ == '__main__':
     images_data_base_dir = os.path.abspath('../../../data/datasets_coco/')
 
-    args, is_horovod = config_setup(image_data_basedir=images_data_base_dir)
+    data_conf = {
+        DataConfig.IMAGE_BASEDIR: images_data_base_dir,
+        DataConfig.TRAIN: [
+            {
+                DataConfig.NICKNAME: 'decay_train',
+                DataConfig.ANN_PATH: os.path.join(os.path.abspath('../../../data/'),
+                                                  'coco_stack_out/web_decay_600-5.json')
+            }
+        ]
+        ,
+        DataConfig.EVAL: [
+            {
+                DataConfig.NICKNAME: 'decay_eval',
+                DataConfig.ANN_PATH: os.path.join(os.path.abspath('../../../data/'),
+                                                  'coco_stack_out/legacy_decay-3.json')
+            }
+        ]
+    }
+
+    data_conf = {
+        DataConfig.IMAGE_BASEDIR: images_data_base_dir,
+        DataConfig.TRAIN: [
+            {
+                DataConfig.NICKNAME: 'decay_train',
+                DataConfig.ANN_PATH: os.path.join(os.path.abspath('../../../data/'),
+                                                  'coco_stack_out/web_decay_600-6-tooth.json')
+            }
+        ]
+        ,
+        DataConfig.EVAL: [
+            {
+                DataConfig.NICKNAME: 'decay_eval',
+                DataConfig.ANN_PATH: os.path.join(os.path.abspath('../../../data/'),
+                                                  'coco_stack_out/legacy_decay-7-tooth.json') #
+            }
+        ]
+    }
+
+    data_config = DataConfig(image_data_basedir=None)
+    data_config.pop_from_dict(data_conf)
+
+    args, is_horovod = config_setup(data_config=data_config)
 
     # Create model
     MODEL = ResNetFPNModel() if cfg.MODE_FPN else ResNetC4Model()
