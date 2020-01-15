@@ -12,6 +12,8 @@ import cv2
 import tqdm
 
 import tensorpack.utils.viz as tpviz
+from dataset.data_config import DataConfig
+from dataset.data_configs import data_conf_tooth_only
 from tensorpack.predict import MultiTowerOfflinePredictor, OfflinePredictor, PredictConfig
 from tensorpack.tfutils import SmartInit, get_tf_version_tuple
 from tensorpack.tfutils.export import ModelExporter
@@ -23,6 +25,7 @@ from config import finalize_configs
 from data import get_eval_dataflow, get_train_dataflow
 from eval import DetectionResult, multithread_predict_dataflow, predict_image, run_resize_image, predict_resized_image
 from modeling.generalized_rcnn import ResNetC4Model, ResNetFPNModel
+from train_job_setup import set_config_v1
 from viz import (
     draw_annotation, draw_final_outputs, draw_predictions,
     draw_proposal_recall, draw_final_outputs_blackwhite)
@@ -115,8 +118,8 @@ def do_sanity_check(pred_func, output_dir='/root/dentalpoc/logs/xxxxx'):
         #     get_eval_dataflow(dataset, shard=k, num_shards=num_tower, add_gt=True)
         #     for k in range(num_tower)]
         # all_results = multithread_predict_dataflow(dataflows, graph_funcs)
-        coco_format_detetcion = DatasetRegistry.get(dataset)
-        coco_object = coco_format_detetcion.coco
+        coco_format_detection = DatasetRegistry.get(dataset)
+        coco_object = coco_format_detection.coco
         for _im_id, _img_dic in list(coco_object.imgs.items())[1:]:
             _img_path = _img_dic['path']
             _img_seg_polygons = coco_object.imgToAnns[_im_id]
@@ -169,18 +172,18 @@ def do_predict(pred_func, input_file):
     tpviz.interactive_imshow(viz)
 
 
-def set_config_A():
-    cfg.DATA.BASEDIR = os.path.abspath('../../../data/toooth')
-    cfg.MODE_FPN = True
-    cfg.DATA.VAL = ('coco_formated_eval',)
-    cfg.DATA.TRAIN = ('coco_formated_train',)
-    cfg.TRAIN.BASE_LR = 1e-3
-    cfg.TRAIN.EVAL_PERIOD = 1
-    cfg.TRAIN.LR_SCHEDULE = [1000]
-    cfg.PREPROC.TRAIN_SHORT_EDGE_SIZE = [600, 1200]
-    cfg.TRAIN.CHECKPOINT_PERIOD = 1
-    cfg.DATA.NUM_WORKERS = 1
-    cfg.TRAIN.CHECKPOINT_PERIOD = 1
+# def set_config_A():
+#     cfg.DATA.BASEDIR = os.path.abspath('../../../data/toooth')
+#     cfg.MODE_FPN = True
+#     cfg.DATA.VAL = ('coco_formated_eval',)
+#     cfg.DATA.TRAIN = ('coco_formated_train',)
+#     cfg.TRAIN.BASE_LR = 1e-3
+#     cfg.TRAIN.EVAL_PERIOD = 1
+#     cfg.TRAIN.LR_SCHEDULE = [1000]
+#     cfg.PREPROC.TRAIN_SHORT_EDGE_SIZE = [600, 1200]
+#     cfg.TRAIN.CHECKPOINT_PERIOD = 1
+#     cfg.DATA.NUM_WORKERS = 1
+#     cfg.TRAIN.CHECKPOINT_PERIOD = 1
 
 
 """
@@ -188,7 +191,12 @@ def set_config_A():
 """
 
 if __name__ == '__main__':
-    set_config_A()
+    # set_config_A()
+    data_config = DataConfig(image_data_basedir=None)
+    data_config.pop_from_dict(data_conf_tooth_only)
+    register_coco_format(data_config=data_config)
+    set_config_v1(data_config=data_config)
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--load', help='load a model for evaluation.', required=False)
     parser.add_argument('--visualize', action='store_true', help='visualize intermediate results')
@@ -206,7 +214,9 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    args.load = "/root/dentalpoc/logs/tootth2/checkpoint"
+    # TODO: cheat
+    args.load = "/root/dentalpoc/logs/decay_tooth_02/checkpoint"
+    args.output_pb = 'decay_01.pb'
 
     if args.config:
         cfg.update_config_from_args(args.config)
@@ -214,12 +224,6 @@ if __name__ == '__main__':
     # register_balloon(cfg.DATA.BASEDIR)
 
     import os
-
-    annotations_dir = os.path.join(cfg.DATA.BASEDIR, 'annotations')
-    data_load = COCOFormatDataLoader(project_root_dir='', coco_dir=annotations_dir)
-    _latest = data_load.latest()
-    latest_coco = next(_latest)
-    register_coco_format(None, data_meta_info=latest_coco)
 
     MODEL = ResNetFPNModel() if cfg.MODE_FPN else ResNetC4Model()
 
@@ -245,7 +249,8 @@ if __name__ == '__main__':
             output_names=MODEL.get_inference_tensor_names()[1])
 
         if args.output_pb:
-            ModelExporter(predcfg).export_compact(args.output_pb, optimize=False)
+            output_pb_path = os.path.join(os.path.dirname(args.load), args.output_pb)
+            ModelExporter(predcfg).export_compact(output_pb_path, optimize=False)
         elif args.output_serving:
             ModelExporter(predcfg).export_serving(args.output_serving, optimize=False)
 
@@ -255,7 +260,7 @@ if __name__ == '__main__':
                 do_predict(predictor, image_file)
         elif args.sanity_check:
             predictor = OfflinePredictor(predcfg)
-            do_sanity_check(pred_func=predictor, output_dir='/root/dentalpoc/out')
+            do_sanity_check(pred_func=predictor, output_dir='/root/dentalpoc/out_ttoo')
         elif args.evaluate:
             assert args.evaluate.endswith('.json'), args.evaluate
             do_evaluate(predcfg, args.evaluate)

@@ -120,10 +120,10 @@ def _setup_logging(logdir, is_horovod):
     logger.info("Environment Information:\n" + collect_env_info())
 
 
-def register_data_pipeline_v2(data_config: DataConfig):
-    # assert 'train' in data_split_meta_info
-    # assert 'eval' in data_split_meta_info
-    register_coco_format(data_config=data_config)
+# def register_data_pipeline_v2(data_config: DataConfig):
+#     # assert 'train' in data_split_meta_info
+#     # assert 'eval' in data_split_meta_info
+#     register_coco_format(data_config=data_config)
 
 
 def config_setup(data_config: DataConfig):
@@ -141,7 +141,7 @@ def config_setup(data_config: DataConfig):
     train_args = add_args()
     train_args = maybe_overwrite_config(train_args)
 
-    register_data_pipeline_v2(data_config=data_config)
+    register_coco_format(data_config=data_config)
     is_horovod_ = cfg.TRAINER == 'horovod'
 
     _setup_logging(train_args.logdir, is_horovod_)
