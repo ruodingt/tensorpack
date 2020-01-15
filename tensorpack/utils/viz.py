@@ -350,7 +350,7 @@ def intensity_to_rgb(intensity, cmap='cubehelix', normalize=False):
     return intensity.astype('float32') * 255.0
 
 
-def draw_text(img, pos, text, color, font_scale=0.4):
+def draw_text(img, pos, text, color, font_scale=0.4, thickness=1):
     """
     Draw text on an image.
 
@@ -375,11 +375,11 @@ def draw_text(img, pos, text, color, font_scale=0.4):
     cv2.rectangle(img, back_topleft, back_bottomright, color, -1)
     # Show text.
     text_bottomleft = x0, y0 - int(0.25 * text_h)
-    cv2.putText(img, text, text_bottomleft, font, font_scale, (222, 222, 222), lineType=cv2.LINE_AA)
+    cv2.putText(img, text, text_bottomleft, font, font_scale, (222, 222, 222), lineType=cv2.LINE_AA, thickness=thickness)
     return img
 
 
-def draw_boxes(im, boxes, labels=None, color=None):
+def draw_boxes(im, boxes, labels=None, color=None, font_scale=0.4, thickness=2):
     """
     Args:
         im (np.ndarray): a BGR image in range [0,255]. It will not be modified.
@@ -409,7 +409,7 @@ def draw_boxes(im, boxes, labels=None, color=None):
     for i in sorted_inds:
         box = boxes[i, :]
         if labels is not None:
-            im = draw_text(im, (box[0], box[1]), labels[i], color=color)
+            im = draw_text(im, (box[0], box[1]), labels[i], color=color, font_scale=font_scale, thickness=thickness)
         cv2.rectangle(im, (box[0], box[1]), (box[2], box[3]),
                       color=color, thickness=1)
     return im

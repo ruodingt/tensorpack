@@ -106,7 +106,7 @@ def convert_box_mode_xywh_2_xyxy(box):
     return box[0], box[1], box[0] + box[2], box[1] + box[3]
 
 
-def do_sanity_check(pred_func, output_dir='/root/dentalpoc/logs/xxxxx'):
+def do_sanity_check(pred_func, output_dir='/root/dentalpoc/logs/xxxxx', font_rs=10, thickness_rs=10):
     # num_tower = max(cfg.TRAIN.NUM_GPUS, 1)
     # graph_funcs = MultiTowerOfflinePredictor(
     #     pred_config, list(range(num_tower))).get_predictors()
@@ -134,24 +134,30 @@ def do_sanity_check(pred_func, output_dir='/root/dentalpoc/logs/xxxxx'):
             _predict_with_gt(pred_func=pred_func,
                              input_file=_img_path,
                              ground_truths=detection_ground_truths,
-                             output_dir=output_dir)
+                             output_dir=output_dir,
+                             font_rs=font_rs,
+                             thickness_rs=thickness_rs)
 
         xxx = 0
         # output = output_file + '-' + dataset
         # DatasetRegistry.get(dataset).eval_inference_results(all_results, output)
 
 
-def _predict_with_gt(pred_func, input_file, ground_truths, output_dir=None):
+def _predict_with_gt(pred_func, input_file, ground_truths, output_dir=None, font_rs=10, thickness_rs=10):
     img = cv2.imread(input_file, cv2.IMREAD_COLOR)
 
-    resized_img, orig_shape, scale = run_resize_image(img)
+    # resized_img, orig_shape, scale = run_resize_image(img)
+    #  TODO: predict_image already contains resize
     results = predict_image(img, pred_func)
+    font_scale = np.sqrt(min(img.shape[:2])) / font_rs
+    thickness = thickness_rs
+    print('font_scale:', font_scale)
     if cfg.MODE_MASK:
-        final = draw_final_outputs_blackwhite(img, results)
+        final = draw_final_outputs_blackwhite(img, results, font_scale=font_scale, thickness=thickness)
     else:
-        final = draw_final_outputs(img, results)
+        final = draw_final_outputs(img, results, font_scale=font_scale, thickness=thickness)
 
-    image_with_gt = draw_final_outputs(img, ground_truths)
+    image_with_gt = draw_final_outputs(img, ground_truths, font_scale=font_scale, thickness=thickness)
     viz = np.concatenate((image_with_gt, final), axis=1)
     out_path = os.path.join(output_dir, re.sub('/', '-', input_file) + '.out.png')
     cv2.imwrite(out_path, viz)
@@ -216,7 +222,8 @@ if __name__ == '__main__':
 
     # TODO: cheat
     args.load = "/root/dentalpoc/logs/decay_tooth_02/checkpoint"
-    args.output_pb = 'decay_01.pb'
+    output_dir = '/root/dentalpoc/out_ttoo4'
+    # args.output_pb = 'decay_01.pb'
 
     if args.config:
         cfg.update_config_from_args(args.config)
@@ -260,7 +267,7 @@ if __name__ == '__main__':
                 do_predict(predictor, image_file)
         elif args.sanity_check:
             predictor = OfflinePredictor(predcfg)
-            do_sanity_check(pred_func=predictor, output_dir='/root/dentalpoc/out_ttoo')
+            do_sanity_check(pred_func=predictor, output_dir=output_dir, font_rs=17, thickness_rs=4)
         elif args.evaluate:
             assert args.evaluate.endswith('.json'), args.evaluate
             do_evaluate(predcfg, args.evaluate)

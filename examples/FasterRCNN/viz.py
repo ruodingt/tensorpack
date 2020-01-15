@@ -65,10 +65,10 @@ def draw_predictions(img, boxes, scores):
     labels = scores.argmax(axis=1)
     scores = scores.max(axis=1)
     tags = ["{},{:.2f}".format(cfg.DATA.CLASS_NAMES[lb], score) for lb, score in zip(labels, scores)]
-    return viz.draw_boxes(img, boxes, tags)
+    return viz.draw_boxes(img, boxes, tags, font_scale=font_scale, thickness=thickness)
 
 
-def draw_final_outputs(img, results):
+def draw_final_outputs(img, results, font_scale=0.4, thickness=2):
     """
     Args:
         results: [DetectionResult]
@@ -92,11 +92,11 @@ def draw_final_outputs(img, results):
     for r in results:
         tags.append(
             "{},{:.2f}".format(cfg.DATA.CLASS_NAMES[r.class_id], r.score))
-    ret = viz.draw_boxes(ret, boxes, tags)
+    ret = viz.draw_boxes(ret, boxes, tags, font_scale=font_scale, thickness=thickness)
     return ret
 
 
-def draw_final_outputs_blackwhite(img, results, bwmode=True):
+def draw_final_outputs_blackwhite(img, results, bwmode=True, font_scale=0.4, thickness=2):
     """
     Args:
         results: [DetectionResult]
@@ -120,7 +120,7 @@ def draw_final_outputs_blackwhite(img, results, bwmode=True):
         img_bw[m] = img[m]
 
     tags = ["{},{:.2f}".format(cfg.DATA.CLASS_NAMES[r.class_id], r.score) for r in results]
-    ret = viz.draw_boxes(img_bw, boxes, tags)
+    ret = viz.draw_boxes(img_bw, boxes, tags, font_scale=font_scale, thickness=thickness)
     return ret
 
 
