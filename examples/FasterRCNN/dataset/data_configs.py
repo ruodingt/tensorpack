@@ -39,7 +39,27 @@ data_conf_tooth_only = {
             {
                 DataConfig.NICKNAME: 'decay_eval',
                 DataConfig.ANN_PATH: os.path.join(os.path.abspath('../../../data/'),
-                                                  'coco_stack_out/legacy_decay-7-tooth.json') #
+                                                  'coco_stack_out/legacy_decay-7-tooth.json')  #
+            }
+        ]
+    }
+
+
+data_conf_lesion_only = {
+        DataConfig.IMAGE_BASEDIR: os.path.abspath('../../../data/datasets_coco/'),
+        DataConfig.TRAIN: [
+            {
+                DataConfig.NICKNAME: 'decay_train',
+                DataConfig.ANN_PATH: os.path.join(os.path.abspath('../../../data/'),
+                                                  'coco_stack_out/web_decay_600-9-lesion.json')
+            }
+        ]
+        ,
+        DataConfig.EVAL: [
+            {
+                DataConfig.NICKNAME: 'decay_eval',
+                DataConfig.ANN_PATH: os.path.join(os.path.abspath('../../../data/'),
+                                                  'coco_stack_out/legacy_decay-8-lesion.json')  #
             }
         ]
     }

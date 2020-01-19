@@ -5,7 +5,7 @@
 from config import config as cfg
 from data import get_train_dataflow
 from dataset.data_config import DataConfig
-from dataset.data_configs import data_conf_tooth_only
+from dataset.data_configs import data_conf_tooth_only, data_conf_lesion_only
 from eval import EvalCallback
 from modeling.generalized_rcnn import ResNetC4Model, ResNetFPNModel
 from tensorpack import *
@@ -86,9 +86,8 @@ def create_callbacks(warmup_schedule, lr_schedule, model, logdir):
 
 if __name__ == '__main__':
 
-
     data_config = DataConfig(image_data_basedir=None)
-    data_config.pop_from_dict(data_conf_tooth_only)
+    data_config.pop_from_dict(data_conf_lesion_only)
 
     args, is_horovod = config_setup(data_config=data_config)
 

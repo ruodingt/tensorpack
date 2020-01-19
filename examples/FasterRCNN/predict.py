@@ -224,6 +224,7 @@ if __name__ == '__main__':
     args.load = "/root/dentalpoc/logs/decay_tooth_02/checkpoint"
     output_dir = '/root/dentalpoc/out_ttoo4'
     # args.output_pb = 'decay_01.pb'
+    args.output_serving = '01211'
 
     if args.config:
         cfg.update_config_from_args(args.config)
@@ -259,15 +260,15 @@ if __name__ == '__main__':
             output_pb_path = os.path.join(os.path.dirname(args.load), args.output_pb)
             ModelExporter(predcfg).export_compact(output_pb_path, optimize=False)
         elif args.output_serving:
-            ModelExporter(predcfg).export_serving(args.output_serving, optimize=False)
-
+            output_serving_path = os.path.join(os.path.dirname(args.load), 'export/Servo', args.output_serving)
+            ModelExporter(predcfg).export_serving(output_serving_path) #, optimize=False
         if args.predict:
             predictor = OfflinePredictor(predcfg)
             for image_file in args.predict:
                 do_predict(predictor, image_file)
         elif args.sanity_check:
             predictor = OfflinePredictor(predcfg)
-            do_sanity_check(pred_func=predictor, output_dir=output_dir, font_rs=17, thickness_rs=4)
+            do_sanity_check(pred_func=predictor, output_dir=output_dir, font_rs=20, thickness_rs=4)
         elif args.evaluate:
             assert args.evaluate.endswith('.json'), args.evaluate
             do_evaluate(predcfg, args.evaluate)
