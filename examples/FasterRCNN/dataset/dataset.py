@@ -74,11 +74,13 @@ class DatasetSplit():
 class DatasetRegistry():
     _registry = {}
     _metadata_registry = defaultdict(dict)
+    _log = {}
 
     @staticmethod
-    def register(dataset_name, func, split_subset=None):
+    def register(dataset_name, func, logx=None):
         """
 
+        :param logx:
         :param dataset_name: the name of the dataset split, e.g. "coco_train2017"
         :param func: a function which returns an instance of `DatasetSplit`
         :param split_subset: split_subset
@@ -86,13 +88,14 @@ class DatasetRegistry():
         """
         assert dataset_name not in DatasetRegistry._registry, "Dataset {} was registered already!".format(dataset_name)
 
-        DatasetRegistry._registry[dataset_name] = func
+        DatasetRegistry._registry[dataset_name] = func, func()
+        DatasetRegistry._log[dataset_name] = logx
 
         # read class names from annotation
         class_names = func().categories_name
         return class_names
 
-
+    @staticmethod
     def get(name):
         """
         Args:
@@ -103,10 +106,11 @@ class DatasetRegistry():
         """
         assert name in DatasetRegistry._registry, "Dataset {} was not registered!".format(name)
         _registered_item = DatasetRegistry._registry[name]
-        if callable(_registered_item):
-            return _registered_item()
-        else:
-            return _registered_item
+        # if callable(_registered_item[0]):
+        #     rr = _registered_item[0]()
+        #     return rr
+        # else:
+        return _registered_item[1]
 
     @staticmethod
     def register_metadata(name, key, value):

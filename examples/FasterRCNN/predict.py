@@ -13,7 +13,7 @@ import tqdm
 
 import tensorpack.utils.viz as tpviz
 from dataset.data_config import DataConfig
-from dataset.data_configs import data_conf_tooth_only
+from dataset.data_configs import data_conf_tooth_only, data_conf_gingivitis_only
 from tensorpack.predict import MultiTowerOfflinePredictor, OfflinePredictor, PredictConfig
 from tensorpack.tfutils import SmartInit, get_tf_version_tuple
 from tensorpack.tfutils.export import ModelExporter
@@ -149,14 +149,18 @@ def _predict_with_gt(pred_func, input_file, ground_truths, output_dir=None, font
     # resized_img, orig_shape, scale = run_resize_image(img)
     #  TODO: predict_image already contains resize
     results = predict_image(img, pred_func)
+    results = list(filter(lambda x: x.score > 0.7, results))
     font_scale = np.sqrt(min(img.shape[:2])) / font_rs
     thickness = thickness_rs
     print('font_scale:', font_scale)
+
+    img = cv2.imread(input_file, cv2.IMREAD_COLOR)
     if cfg.MODE_MASK:
         final = draw_final_outputs_blackwhite(img, results, font_scale=font_scale, thickness=thickness)
     else:
         final = draw_final_outputs(img, results, font_scale=font_scale, thickness=thickness)
 
+    img = cv2.imread(input_file, cv2.IMREAD_COLOR)
     image_with_gt = draw_final_outputs(img, ground_truths, font_scale=font_scale, thickness=thickness)
     viz = np.concatenate((image_with_gt, final), axis=1)
     out_path = os.path.join(output_dir, re.sub('/', '-', input_file) + '.out.png')
@@ -221,10 +225,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # TODO: cheat
-    args.load = "/root/dentalpoc/logs/decay_tooth_02/checkpoint"
-    output_dir = '/root/dentalpoc/out_ttoo4'
+    args.load = "/root/dentalpoc/logs/decay_test_o122/checkpoint"
+    output_dir = '/root/dentalpoc/out_decay_test_o122x2'
     # args.output_pb = 'decay_01.pb'
-    args.output_serving = '01211'
+    # args.output_serving = '01211'
 
     if args.config:
         cfg.update_config_from_args(args.config)
@@ -268,7 +272,7 @@ if __name__ == '__main__':
                 do_predict(predictor, image_file)
         elif args.sanity_check:
             predictor = OfflinePredictor(predcfg)
-            do_sanity_check(pred_func=predictor, output_dir=output_dir, font_rs=20, thickness_rs=4)
+            do_sanity_check(pred_func=predictor, output_dir=output_dir, font_rs=40, thickness_rs=1)
         elif args.evaluate:
             assert args.evaluate.endswith('.json'), args.evaluate
             do_evaluate(predcfg, args.evaluate)

@@ -38,8 +38,10 @@ def set_config_v1(data_config: DataConfig):
     cfg.DATA.VAL = data_config.get_nickname_list(DataConfig.EVAL)
     cfg.TRAIN.BASE_LR = 1e-3
     cfg.TRAIN.EVAL_PERIOD = 1
-    cfg.TRAIN.LR_SCHEDULE = [1000]
-    cfg.PREPROC.TRAIN_SHORT_EDGE_SIZE = [600, 1200]
+    cfg.TRAIN.LR_SCHEDULE = [2000, 4000, 6000]
+    cfg.TRAIN.STEPS_PER_EPOCH = 500
+    cfg.PREPROC.TRAIN_SHORT_EDGE_SIZE = [500, 800]
+    cfg.PREPROC.MAX_SIZE = 1000
     cfg.TRAIN.CHECKPOINT_PERIOD = 1
     cfg.DATA.NUM_WORKERS = 1
     cfg.TRAIN.CHECKPOINT_PERIOD = 1

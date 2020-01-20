@@ -354,7 +354,7 @@ def get_train_dataflow():
     )
 
     ds = DataFromList(roidbs, shuffle=True)
-
+    print("training images:", [a['file_name'] for a in ds.lst])
     # TODO: enhance data augmentation here
     preprocess = TrainingDataPreprocessor(cfg)
 

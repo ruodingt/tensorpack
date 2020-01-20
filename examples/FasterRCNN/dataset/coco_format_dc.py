@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+import copy
 import json
 import os
 import time
@@ -158,16 +158,25 @@ class COCOFormatDetectionSubset(DatasetSplit):
         # self.reload_coco()
         with timed_operation('Load annotations for {}'.format(
                 os.path.basename(self.annotation_file_path))):
-            img_ids = self.coco.getImgIds()
+            img_ids_r = self.coco.getImgIds()
+
+            if add_gt:
+                img_ids = list(filter(lambda x: x in self.coco.imgToAnns, img_ids_r))
+            else:
+                img_ids = img_ids_r
+
             img_ids.sort()
             # list of dict, each has keys: height,width,id,file_name
-            imgs = self.coco.loadImgs(img_ids)
+            imgs = copy.deepcopy(self.coco.loadImgs(img_ids))
+
+            # print("drop images without annotations")
+            # imgs = list(filter(lambda x: x in self.coco.imgToAnns, imgs_r))
 
             for idx, img in enumerate(tqdm.tqdm(imgs)):
                 # img['image_id'] = img.pop('id')
                 #  FIXME: why pop here, if use func to load COCOFormatDetectionSubset, then we can use pop
                 #       when use func, it can prevent data
-                img['image_id'] = img.pop('id')
+                img['image_id'] = img['id']
                 img['file_name'] = img['path']
                 if idx == 0:
                     # make sure the directories are correctly set
@@ -292,11 +301,12 @@ def register_coco_format(data_config: DataConfig):
 
     for _split in data_config.train_splits + data_config.eval_splits:  # type: DataSubsetSplit
         _name = _split.nickname
+        print("register coco:", _split)
         class_names = DatasetRegistry.register(
             dataset_name=_name,
             func=lambda sp=_split:
             COCOFormatDetectionSubset(_split.ann_path,
-                                      image_data_basedir=data_config.image_data_basedir))
+                                      image_data_basedir=data_config.image_data_basedir), logx=_split)
         class_names_ls[_name] = class_names
 
     # consistency check
