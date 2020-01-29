@@ -90,8 +90,10 @@ def create_callbacks(warmup_schedule, lr_schedule, model, logdir):
 
 if __name__ == '__main__':
 
+    conf_dict = data_conf_gingivitis_only # data_conf_tooth_only
+
     data_config = DataConfig(image_data_basedir=None)
-    data_config.pop_from_dict(data_conf_tooth_only)
+    data_config.pop_from_dict(conf_dict)
 
     args, is_horovod = config_setup(data_config=data_config)
 

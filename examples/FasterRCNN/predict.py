@@ -236,7 +236,7 @@ def predict_from_endpoint(img):
 if __name__ == '__main__':
     # set_config_A()
     data_config = DataConfig(image_data_basedir=None)
-    data_config.pop_from_dict(data_conf_tooth_only)
+    data_config.pop_from_dict(data_conf_gingivitis_only) #data_conf_tooth_only
     register_coco_format(data_config=data_config)
     set_config_v1(data_config=data_config)
 
@@ -263,8 +263,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # TODO: cheat
-    args.load = "/root/dentalpoc/logs/decay_box_tune_16/checkpoint"
-    output_dir = '/root/dentalpoc/out_decay_box_tune_16x2_EPP400'
+    args.load = "/root/dentalpoc/logs/ging_tune_004/checkpoint"
+    output_dir = '/root/dentalpoc/out_ging_tune_004_EPP400'
     # args.output_pb = 'decay_01.pb'
     # args.output_serving = '01211'
 

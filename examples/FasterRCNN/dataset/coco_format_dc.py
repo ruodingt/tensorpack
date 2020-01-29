@@ -57,10 +57,18 @@ class COCO2(COCO):
         return dataset
 
     def remove_empty_annotations(self, dataset):
-        for i in range(len(dataset['annotations'])):
-            if not dataset['annotations'][i]['segmentation']:
-                dataset['annotations'].pop(i)
-                print("drop annotation #{}".format(i))
+
+        dataset['annotations'] = list(filter(lambda x: len(x['segmentation']) > 0, dataset['annotations']))
+
+        dataset['images'] = list(filter(lambda x: not x['file_name'].endswith('.gif'), dataset['images']))
+
+        # for i in range(len(dataset['annotations'])):
+        #     if not dataset['annotations'][i]['segmentation']:
+        #         dataset['annotations'].pop(i)
+        #         print("drop annotation #{}".format(i))
+        #
+        # for i in range(len(dataset['images'])):
+        #     if dataset['images']
         return dataset
 
 

@@ -108,7 +108,7 @@ data_conf_gingivitis_only = {
             {
                 DataConfig.NICKNAME: 'decay_train',
                 DataConfig.ANN_PATH: os.path.join(os.path.abspath('../../../data/'),
-                                                  'coco_stack_out/gingivitis_web_490-11-ging.json')
+                                                  'coco_stack_out/gingivitis_web_490-13-ging.json')
             }
         ]
         ,
@@ -116,7 +116,7 @@ data_conf_gingivitis_only = {
             {
                 DataConfig.NICKNAME: 'decay_eval',
                 DataConfig.ANN_PATH: os.path.join(os.path.abspath('../../../data/'),
-                                                  'coco_stack_out/legacy_decay-12-ging.json')  #
+                                                  'coco_stack_out/legacy_decay-14-ging.json')  #
             }
         ]
     }
