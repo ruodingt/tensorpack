@@ -195,7 +195,7 @@ def finalize_configs(is_training):
     assert _C.BACKBONE.NORM in ['FreezeBN', 'SyncBN', 'GN', 'None'], _C.BACKBONE.NORM
     if _C.BACKBONE.NORM != 'FreezeBN':
         assert not _C.BACKBONE.FREEZE_AFFINE
-    assert _C.BACKBONE.FREEZE_AT in [0, 1, 2]
+    assert _C.BACKBONE.FREEZE_AT in [0, 1, 2, 3, 4, 5]
 
     _C.RPN.NUM_ANCHOR = len(_C.RPN.ANCHOR_SIZES) * len(_C.RPN.ANCHOR_RATIOS)
     assert len(_C.FPN.ANCHOR_STRIDES) == len(_C.RPN.ANCHOR_SIZES)

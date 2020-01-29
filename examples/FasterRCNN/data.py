@@ -74,7 +74,7 @@ class TrainingDataPreprocessor:
         self.cfg = cfg
         self.aug = imgaug.AugmentorList([
             CustomResize(cfg.PREPROC.TRAIN_SHORT_EDGE_SIZE, cfg.PREPROC.MAX_SIZE),
-            imgaug.Flip(horiz=True)
+            imgaug.Flip(horiz=True), imgaug.Flip(vert=True)
         ])
 
     def __call__(self, roidb):

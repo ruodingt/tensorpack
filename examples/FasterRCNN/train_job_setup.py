@@ -36,15 +36,18 @@ def set_config_v1(data_config: DataConfig):
     # TODO: this one change to path later
     cfg.DATA.TRAIN = data_config.get_nickname_list(DataConfig.TRAIN)
     cfg.DATA.VAL = data_config.get_nickname_list(DataConfig.EVAL)
-    cfg.TRAIN.BASE_LR = 1e-3
+    cfg.TRAIN.BASE_LR = 1e-2
     cfg.TRAIN.EVAL_PERIOD = 1
-    cfg.TRAIN.LR_SCHEDULE = [2000, 4000, 6000]
+    cfg.TRAIN.LR_SCHEDULE = [1000, 2000]
     cfg.TRAIN.STEPS_PER_EPOCH = 500
-    cfg.PREPROC.TRAIN_SHORT_EDGE_SIZE = [500, 800]
-    cfg.PREPROC.MAX_SIZE = 1000
+    cfg.PREPROC.TRAIN_SHORT_EDGE_SIZE = [300, 800]  ## [400, 700] ,[300, 400]  # [300, 500]
+    cfg.PREPROC.TEST_SHORT_EDGE_SIZE = 800  # 1000
+    cfg.PREPROC.MAX_SIZE = 2000  # 1100, 1216
     cfg.TRAIN.CHECKPOINT_PERIOD = 1
     cfg.DATA.NUM_WORKERS = 1
     cfg.TRAIN.CHECKPOINT_PERIOD = 1
+
+    cfg.BACKBONE.FREEZE_AT = 3  # 3
     cfg.freeze(True)
 
 
@@ -152,3 +155,7 @@ def config_setup(data_config: DataConfig):
     finalize_configs(is_training=True)
 
     return train_args, is_horovod_
+
+
+#  https://github.com/tensorflow/tensorflow/pull/32567/files
+

@@ -106,25 +106,15 @@ def _paste_mask(box, mask, shape):
         return ret
 
 
-def predict_image(img, model_func):
-    """
-    Run detection on one image, using the TF callable.
-    This function should handle the preprocessing internally.
-
-    Args:
-        img: an image
-        model_func: a callable from the TF model.
-            It takes image and returns (boxes, probs, labels, [masks])
-
-    Returns:
-        [DetectionResult]
-    """
+def pre_processing_inference(img):
     orig_shape = img.shape[:2]
     resizer = CustomResize(cfg.PREPROC.TEST_SHORT_EDGE_SIZE, cfg.PREPROC.MAX_SIZE)
     resized_img = resizer.augment(img)
     scale = np.sqrt(resized_img.shape[0] * 1.0 / img.shape[0] * resized_img.shape[1] / img.shape[1])
-    boxes, probs, labels, *masks = model_func(resized_img)
+    return resized_img, scale, orig_shape
 
+
+def post_processing_inference(boxes, masks, labels, probs, scale, orig_shape):
     # Some slow numpy postprocessing:
     boxes = boxes / scale
     # boxes are already clipped inside the graph, but after the floating point scaling, this may not be true any more.
@@ -140,6 +130,31 @@ def predict_image(img, model_func):
 
     results = [DetectionResult(*args) for args in zip(boxes, probs, labels.tolist(), masks)]
     return results
+
+
+def predict_image(img, model_func):
+    """
+    Run detection on one image, using the TF callable.
+    This function should handle the preprocessing internally.
+
+    Args:
+        img: an image
+        model_func: a callable from the TF model.
+            It takes image and returns (boxes, probs, labels, [masks])
+
+    Returns:
+        [DetectionResult]
+    """
+
+    resized_img, scale, orig_shape = pre_processing_inference(img)
+
+    boxes, probs, labels, *masks = model_func(resized_img)
+
+    results = post_processing_inference(boxes, masks, labels, probs, scale, orig_shape)
+
+    return results
+
+
 
 
 def run_resize_image(img):

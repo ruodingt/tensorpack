@@ -4,6 +4,7 @@ import argparse
 import itertools
 import re
 
+import botocore
 import numpy as np
 import os
 import shutil
@@ -13,7 +14,7 @@ import tqdm
 
 import tensorpack.utils.viz as tpviz
 from dataset.data_config import DataConfig
-from dataset.data_configs import data_conf_tooth_only, data_conf_gingivitis_only
+from dataset.data_configs_dict import data_conf_tooth_only, data_conf_gingivitis_only
 from tensorpack.predict import MultiTowerOfflinePredictor, OfflinePredictor, PredictConfig
 from tensorpack.tfutils import SmartInit, get_tf_version_tuple
 from tensorpack.tfutils.export import ModelExporter
@@ -32,6 +33,11 @@ from viz import (
 
 from data_prepare.coco_format import COCOFormatDataLoader
 from dataset import register_coco, register_balloon, register_coco_format
+
+import sagemaker
+import time
+import boto3
+from sagemaker.tensorflow.model import TensorFlowModel
 
 
 def do_visualize(model, model_path, nr_visualize=100, output_dir='output'):
@@ -196,6 +202,33 @@ def do_predict(pred_func, input_file):
 #     cfg.TRAIN.CHECKPOINT_PERIOD = 1
 
 
+
+def predict_from_endpoint(img):
+    endpoint_name = 'tensorflow-inference-2020-01-28-22-47-19-125'
+
+    SYDNEY = "ap-southeast-2"
+    boto_session = boto3.Session(region_name=SYDNEY)
+    sagemaker_session = sagemaker.Session(boto_session=boto_session)
+    predictor = sagemaker.tensorflow.model.TensorFlowPredictor(endpoint_name, sagemaker_session)
+
+    try:
+        t0 = time.time()
+        # print(t0)
+        _outs = predictor.predict(img)
+        preds = _outs['predictions']
+        t1 = time.time()
+        print('time cost:', t1 - t0)
+    except:
+        return np.array([]), np.array([]), np.array([]), np.array([])
+
+    boxes = np.array([p['output/boxes:0'] for p in preds])
+    probs = np.array([p['output/scores:0'] for p in preds])
+    labels = np.array([p['output/labels:0'] for p in preds])
+    masks = np.array([p['output/masks:0'] for p in preds])
+
+    return boxes, probs, labels, masks
+
+
 """
 ./predict.py --predict input1.jpg input2.jpg --load /path/to/Trained-Model-Checkpoint --config SAME-AS-TRAINING
 """
@@ -207,6 +240,10 @@ if __name__ == '__main__':
     register_coco_format(data_config=data_config)
     set_config_v1(data_config=data_config)
 
+    cfg.freeze(False)
+    cfg.PREPROC.TEST_SHORT_EDGE_SIZE = 400
+    cfg.freeze(True)
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--load', help='load a model for evaluation.', required=False)
     parser.add_argument('--visualize', action='store_true', help='visualize intermediate results')
@@ -216,6 +253,7 @@ if __name__ == '__main__':
                                           "This argument is the path to the input image file", nargs='+')
 
     parser.add_argument('--sanity_check', help="Run prediction on a given image vs ground truth", action='store_true')
+    parser.add_argument('--endpoint_check', help="Run prediction on a given image vs ground truth", action='store_true')
     parser.add_argument('--benchmark', action='store_true', help="Benchmark the speed of the model + postprocessing")
     parser.add_argument('--config', help="A list of KEY=VALUE to overwrite those defined in config.py",
                         nargs='+')
@@ -225,8 +263,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # TODO: cheat
-    args.load = "/root/dentalpoc/logs/decay_test_o122/checkpoint"
-    output_dir = '/root/dentalpoc/out_decay_test_o122x2'
+    args.load = "/root/dentalpoc/logs/decay_box_tune_16/checkpoint"
+    output_dir = '/root/dentalpoc/out_decay_box_tune_16x2_EPP400'
     # args.output_pb = 'decay_01.pb'
     # args.output_serving = '01211'
 
@@ -265,13 +303,16 @@ if __name__ == '__main__':
             ModelExporter(predcfg).export_compact(output_pb_path, optimize=False)
         elif args.output_serving:
             output_serving_path = os.path.join(os.path.dirname(args.load), 'export/Servo', args.output_serving)
-            ModelExporter(predcfg).export_serving(output_serving_path) #, optimize=False
+            ModelExporter(predcfg).export_serving(output_serving_path, signature_name='serving_default') #, optimize=False
         if args.predict:
             predictor = OfflinePredictor(predcfg)
             for image_file in args.predict:
                 do_predict(predictor, image_file)
         elif args.sanity_check:
             predictor = OfflinePredictor(predcfg)
+            do_sanity_check(pred_func=predictor, output_dir=output_dir, font_rs=40, thickness_rs=1)
+        elif args.endpoint_check:
+            predictor = predict_from_endpoint
             do_sanity_check(pred_func=predictor, output_dir=output_dir, font_rs=40, thickness_rs=1)
         elif args.evaluate:
             assert args.evaluate.endswith('.json'), args.evaluate

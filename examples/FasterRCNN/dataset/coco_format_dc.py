@@ -36,6 +36,7 @@ class COCO2(COCO):
             print('loading annotations into memory...')
             tic = time.time()
             dataset = json.load(open(annotation_file, 'r'))
+            dataset = self.remove_empty_annotations(dataset)
             assert type(dataset) == dict, 'annotation file format {} not supported'.format(type(dataset))
             print('Done (t={:0.2f}s)'.format(time.time() - tic))
             self.dataset = self.replace_category_id(dataset)
@@ -55,6 +56,29 @@ class COCO2(COCO):
             a['category_id'] = coco_new_id_2_original_id[a['category_id']].new_id
         return dataset
 
+    def remove_empty_annotations(self, dataset):
+        for i in range(len(dataset['annotations'])):
+            if not dataset['annotations'][i]['segmentation']:
+                dataset['annotations'].pop(i)
+                print("drop annotation #{}".format(i))
+        return dataset
+
+
+class ImageAnno:
+    def __init__(self, img, annos, size_type=None):
+        self.img = img
+        self.anno_ls = annos
+        self.size_type = size_type
+
+        self.bbox_sizes = self._extract_box_size()
+
+    def _extract_box_size(self):
+        if self.size_type is None:
+            box_sizes_hw = [(a['bbox'][2], a['bbox'][3]) for a in self.anno_ls]
+            box_sizes = list(map(lambda x: np.sqrt(x[0] ** 2 + x[1] ** 2), box_sizes_hw))
+            return box_sizes
+        else:
+            raise NotImplementedError()
 
 
 class COCOFormatDetectionSubset(DatasetSplit):
@@ -112,6 +136,23 @@ class COCOFormatDetectionSubset(DatasetSplit):
             assert _categories_sorted[0][0] == 1
         _, self.categories_name = list(zip(*_categories_sorted))
         logger.info("Instances loaded from {}.".format(annotation_fp))
+        self.box_sizes = []
+
+    def to_image_annos(self, box_size_type=None):
+        ls = []
+        for k, v in self.coco.imgToAnns.items():
+            ls.append(ImageAnno(img=self.coco.imgs[k], annos=v, size_type=box_size_type))
+        return ls
+
+    def f_score(self,p,r,k):
+        """
+         recall is considered k times as important as precision
+        :param p:
+        :param r:
+        :param k:
+        :return:
+        """
+        return (1 + k**2)*p*r/(k**2*p + r)
 
     def print_coco_metrics(self, results):
         """
@@ -130,9 +171,17 @@ class COCOFormatDetectionSubset(DatasetSplit):
         cocoEval.evaluate()
         cocoEval.accumulate()
         cocoEval.summarize()
-        fields = ['IoU=0.5:0.95', 'IoU=0.5', 'IoU=0.75', 'small', 'medium', 'large']
+        fields_ap = ['IoU=0.5:0.95', 'IoU=0.5', 'IoU=0.75', 'small', 'medium', 'large']
+        # fields_ar = ['IoU=0.50:0.95', ]
         for k in range(6):
-            ret['mAP(bbox)/' + fields[k]] = cocoEval.stats[k]
+            ret['mAP(bbox)/' + fields_ap[k]] = cocoEval.stats[k]
+        for k in range(6, 12):
+            ret['mAR(bbox)/' + 'IoU=0.5:0.95'] = cocoEval.stats[k]
+
+        ret['mf_score(bbox)/' + 'f1_AP[IoU=0.5]_vs_AR[IoU=0.5:0.95]'] = \
+            self.f_score(p=cocoEval.stats[1], r=cocoEval.stats[7], k=1)
+        ret['mf_score(bbox)/' + 'f2_AP[IoU=0.5]_vs_AR[IoU=0.5:0.95]'] = \
+            self.f_score(p=cocoEval.stats[1], r=cocoEval.stats[7], k=2)
 
         if len(results) > 0 and has_mask:
             cocoEval = COCOeval(self.coco, cocoDt, 'segm')
@@ -140,7 +189,16 @@ class COCOFormatDetectionSubset(DatasetSplit):
             cocoEval.accumulate()
             cocoEval.summarize()
             for k in range(6):
-                ret['mAP(segm)/' + fields[k]] = cocoEval.stats[k]
+                ret['mAP(segm)/' + fields_ap[k]] = cocoEval.stats[k]
+            for k in range(6, 12):
+                ret['mAR(segm)/' + 'IoU=0.5:0.95'] = cocoEval.stats[k]
+
+        ret['mf_score(segm)/' + 'f1_AP[IoU=0.5]_vs_AR[IoU=0.5:0.95]'] = \
+            self.f_score(p=cocoEval.stats[1], r=cocoEval.stats[7], k=1)
+        ret['mf_score(segm)/' + 'f2_AP[IoU=0.5]_vs_AR[IoU=0.5:0.95]'] = \
+            self.f_score(p=cocoEval.stats[1], r=cocoEval.stats[7], k=2)
+
+        print(">>>>>>>>>>>>>>ret", ret)
         return ret
 
     def load(self, add_gt=True, add_mask=False):

@@ -5,7 +5,7 @@
 from config import config as cfg
 from data import get_train_dataflow
 from dataset.data_config import DataConfig
-from dataset.data_configs import data_conf_tooth_only, data_conf_lesion_only, data_conf_gingivitis_only, \
+from dataset.data_configs_dict import data_conf_tooth_only, data_conf_lesion_only, data_conf_gingivitis_only, \
     data_conf_tooth_legacy_of, data_conf_tooth_web_of
 from eval import EvalCallback
 from modeling.generalized_rcnn import ResNetC4Model, ResNetFPNModel
@@ -18,7 +18,6 @@ try:
     import horovod.tensorflow as hvd
 except ImportError:
     pass
-
 
 
 def setup_training_schedule(train_dataflow):
@@ -66,7 +65,7 @@ def create_callbacks(warmup_schedule, lr_schedule, model, logdir):
     # Create callbacks ...
     callbacks_ = [
         PeriodicCallback(
-            ModelSaver(max_to_keep=10,
+            ModelSaver(max_to_keep=20,
                        keep_checkpoint_every_n_hours=1),
             every_k_epochs=cfg.TRAIN.CHECKPOINT_PERIOD),
         # linear warmup
@@ -99,6 +98,11 @@ if __name__ == '__main__':
     # Create model
     MODEL = ResNetFPNModel() if cfg.MODE_FPN else ResNetC4Model()
 
+    import tensorflow as tf
+    trainable_var_key = tf.GraphKeys.TRAINABLE_VARIABLES
+    all_vars = tf.get_collection(key=trainable_var_key, scope="MLP")
+    all_vars = tf.get_collection(key=trainable_var_key, scope="MLP")
+
     # get dataflow
     train_dataflow = get_train_dataflow()
 
@@ -123,5 +127,5 @@ if __name__ == '__main__':
         # nccl mode appears faster than cpu mode
         trainer = SyncMultiGPUTrainerReplicated(cfg.TRAIN.NUM_GPUS, average=False, mode='nccl')
 
-    # exit()
     launch_train_with_config(train_config, trainer)
+

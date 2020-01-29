@@ -185,6 +185,7 @@ def resnet_c4_backbone(image, num_blocks):
 
 @auto_reuse_variable_scope
 def resnet_conv5(image, num_block):
+    #  used in C4 only
     with backbone_scope(freeze=False):
         l = resnet_group('group3', image, resnet_bottleneck, 512, num_block, 2)
         return l
@@ -210,9 +211,11 @@ def resnet_fpn_backbone(image, num_blocks):
         l = MaxPooling('pool0', l, 3, strides=2, padding='VALID')
     with backbone_scope(freeze=freeze_at > 1):
         c2 = resnet_group('group0', l, resnet_bottleneck, 64, num_blocks[0], 1)
-    with backbone_scope(freeze=False):
+    with backbone_scope(freeze=freeze_at > 2):
         c3 = resnet_group('group1', c2, resnet_bottleneck, 128, num_blocks[1], 2)
+    with backbone_scope(freeze=freeze_at > 3):
         c4 = resnet_group('group2', c3, resnet_bottleneck, 256, num_blocks[2], 2)
+    with backbone_scope(freeze=freeze_at > 4):
         c5 = resnet_group('group3', c4, resnet_bottleneck, 512, num_blocks[3], 2)
     # 32x downsampling up to now
     # size of c5: ceil(input/32)
